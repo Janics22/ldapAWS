@@ -11,7 +11,7 @@ LDAP_SERVER=$1
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 ADMIN_DN="cn=admin,$BASE_DN"
 
-echo "=== INICIANDO INSTALACIÓN DE LAM EN AL2023 ==="
+echo "=== INICIANDO INSTALACIÓN DE LAM EN AL2023 (httpd24) ==="
 
 # Esperar servidor LDAP
 echo "Esperando servidor LDAP..."
@@ -23,30 +23,8 @@ done
 # Actualizar sistema
 dnf update -y
 
-# Instalar Apache y PHP
-dnf install -y httpd php php-ldap php-mbstring epel-release ldap-account-manager
-
-# Crear unidad systemd para Apache si no existe
-if ! systemctl list-unit-files | grep -q '^httpd\.service'; then
-    echo "Creando unidad systemd para Apache..."
-    cat > /etc/systemd/system/httpd.service << EOF
-[Unit]
-Description=Apache HTTP Server
-After=network.target
-
-[Service]
-Type=forking
-ExecStart=/usr/sbin/httpd -k start
-ExecReload=/usr/sbin/httpd -k graceful
-ExecStop=/usr/sbin/httpd -k stop
-PIDFile=/run/httpd/httpd.pid
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    systemctl daemon-reload
-fi
+# Instalar Apache 2.4 (httpd24) y PHP con extensiones necesarias
+dnf install -y httpd24 php php-ldap php-mbstring epel-release ldap-account-manager
 
 # Iniciar y habilitar Apache
 systemctl enable httpd
