@@ -74,4 +74,4 @@ cat > /var/www/html/index.html << EOF
 EOF
 
 echo "=== LAM INSTALADO ==="
-echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
+echo "URL: http://\$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
