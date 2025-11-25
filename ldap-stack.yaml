@@ -20,7 +20,7 @@ Parameters:
   GitHubRepoURL:
     Description: URL base del repositorio GitHub con los scripts
     Type: String
-    Default: 'https://github.com/Janics22/lapdAWS'
+    Default: 'https://github.com/Janics22/ldapAWS'
 
 Resources:
   # Security Group completo
@@ -198,3 +198,4 @@ Outputs:
   SecurityGroupId:
     Description: Security Group ID
     Value: !GetAtt LDAPSecurityGroup.GroupId
+
