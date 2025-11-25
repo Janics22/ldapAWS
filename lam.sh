@@ -27,8 +27,8 @@ dnf update -y
 dnf install -y httpd24 php php-ldap php-mbstring epel-release ldap-account-manager
 
 # Iniciar y habilitar Apache
-systemctl enable httpd
-systemctl start httpd
+systemctl enable httpd24-httpd
+systemctl start httpd24-httpd
 
 # Configurar LAM
 cat > /etc/ldap-account-manager/config.cfg << EOF
