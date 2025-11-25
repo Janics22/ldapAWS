@@ -21,9 +21,9 @@ until nc -z $LDAP_SERVER 389; do
 done
 
 # Actualizar sistema e instalar dependencias
-yum update -y
-yum install -y epel-release
-yum install -y httpd php php-ldap php-mbstring ldap-account-manager
+dnf update -y
+dnf install -y epel-release
+dnf install -y httpd php php-ldap php-mbstring epel-release ldap-account-manager
 
 # Configurar LAM
 cat > /etc/ldap-account-manager/config.cfg << EOF
