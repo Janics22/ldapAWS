@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+# Validar IP del servidor LDAP
 if [ -z "$1" ]; then
     echo "Error: Proporciona IP del servidor LDAP"
     exit 1
@@ -15,16 +16,14 @@ echo "=== INSTALANDO LAM ==="
 # Esperar servidor LDAP
 echo "Esperando servidor LDAP..."
 until nc -z $LDAP_SERVER 389; do
+    echo "Servidor LDAP no disponible, esperando 10s..."
     sleep 10
 done
 
-# Instalar Apache y PHP
-dnf update -y
-dnf install -y httpd php php-ldap php-mbstring
-
-# Instalar LAM
-dnf install -y epel-release
-dnf install -y ldap-account-manager
+# Actualizar sistema e instalar dependencias
+yum update -y
+yum install -y epel-release
+yum install -y httpd php php-ldap php-mbstring ldap-account-manager
 
 # Configurar LAM
 cat > /etc/ldap-account-manager/config.cfg << EOF
@@ -46,7 +45,7 @@ EOF
 chown apache:apache /etc/ldap-account-manager/config.cfg
 chmod 640 /etc/ldap-account-manager/config.cfg
 
-# Iniciar Apache
+# Iniciar y habilitar Apache
 systemctl enable httpd
 systemctl start httpd
 
@@ -68,10 +67,10 @@ cat > /var/www/html/index.html << EOF
     <h1>LDAP Account Manager</h1>
     <p><a href="/lam">Acceder a LAM</a></p>
     <p>Usuario: cn=admin,dc=amsa,dc=udl,dc=cat</p>
-    <p>Contraseña: 1234</p>
+    <p>Contraseña: lam</p>
 </body>
 </html>
 EOF
 
 echo "=== LAM INSTALADO ==="
-echo "URL: http://\$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
+echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
