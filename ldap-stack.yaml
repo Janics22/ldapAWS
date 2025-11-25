@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Infraestructura LDAP completa - Servidor LDAP, Cliente y LAM'
+Description: 'Infraestructura LDAP completa - Servidor, Cliente y LAM'
 
 Parameters:
   KeyName:
-    Description: Nombre de un key pair EC2 existente en AWS Academy
+    Description: Nombre de un key pair EC2 existente
     Type: 'AWS::EC2::KeyPair::KeyName'
     ConstraintDescription: debe ser el nombre de un key pair EC2 existente
   
@@ -20,15 +20,14 @@ Parameters:
   GitHubRepoURL:
     Description: URL base del repositorio GitHub con los scripts
     Type: String
-    Default: 'https://github.com/Janics22/ldapAWS'
+    Default: 'https://github.com/Janics22/lapdAWS'
 
 Resources:
-  # Security Group
+  # Security Group completo
   LDAPSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: Security Group para servidores LDAP
-      GroupName: !Sub 'ldap-sg-${AWS::StackName}'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -62,9 +61,7 @@ Resources:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
         - Key: Name
-          Value: !Sub 'ldap-server-${AWS::StackName}'
-        - Key: Project
-          Value: LDAP-Infrastructure
+          Value: ldap-server
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -73,7 +70,7 @@ Resources:
           
           echo "=== INICIANDO INSTALACIÓN DEL SERVIDOR LDAP ==="
           
-          # Descargar script del servidor LDAP
+          # Descargar script del servidor LDAP desde GitHub
           cd /tmp
           curl -L -o server_ldap.sh "${GitHubRepoURL}/server_ldap.sh"
           chmod +x server_ldap.sh
@@ -94,9 +91,7 @@ Resources:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
         - Key: Name
-          Value: !Sub 'ldap-client-${AWS::StackName}'
-        - Key: Project
-          Value: LDAP-Infrastructure
+          Value: ldap-client
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -115,7 +110,7 @@ Resources:
             sleep 30
           done
           
-          # Descargar script del cliente LDAP
+          # Descargar script del cliente LDAP desde GitHub
           cd /tmp
           curl -L -o client_ldap.sh "${GitHubRepoURL}/client_ldap.sh"
           chmod +x client_ldap.sh
@@ -136,19 +131,16 @@ Resources:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
         - Key: Name
-          Value: !Sub 'ldap-lam-${AWS::StackName}'
-        - Key: Project
-          Value: LDAP-Infrastructure
+          Value: ldap-lam
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -e
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
           
-          echo "=== INICIANDO INSTALACIÓN LAM ==="
+          echo "=== ESPERANDO AL SERVIDOR LDAP ==="
           
           # Esperar a que el servidor LDAP esté listo
-          echo "Esperando al servidor LDAP..."
           for i in {1..30}; do
             if nc -z ${LDAPServer.PrivateIp} 389; then
               echo "Servidor LDAP detectado en el intento $i"
@@ -158,25 +150,20 @@ Resources:
             sleep 30
           done
           
-          # Descargar y ejecutar script mejorado
+          # Descargar script de LAM desde GitHub
           cd /tmp
-          curl -L -o lam.sh "https://github.com/Janics22/ldapAWS/lam.sh"
+          curl -L -o lam.sh "${GitHubRepoURL}/lam.sh"
           chmod +x lam.sh
           
-          # Ejecutar con logging extensivo
-          ./lam.sh ${LDAPServer.PrivateIp} >> /var/log/lam-installation.log 2>&1
+          # Ejecutar script
+          ./lam.sh ${LDAPServer.PrivateIp}
           
-          echo "=== INSTALACIÓN LAM COMPLETADA ==="
-
+          echo "=== INSTALACIÓN DE LAM COMPLETADA ==="
 
 Outputs:
   LDAPServerIP:
     Description: IP pública del servidor LDAP
     Value: !GetAtt LDAPServer.PublicIp
-
-  LDAPServerPrivateIP:
-    Description: IP privada del servidor LDAP
-    Value: !GetAtt LDAPServer.PrivateIp
 
   LDAPClientIP:
     Description: IP pública del cliente LDAP
@@ -204,11 +191,10 @@ Outputs:
   SSHCommands:
     Description: Comandos SSH para conexión
     Value: !Sub |
-      ssh -i key.pem ec2-user@${LDAPServer.PublicIp}
-      ssh -i key.pem ec2-user@${LDAPClient.PublicIp}
-      ssh -i key.pem ec2-user@${LAMServer.PublicIp}
+      Servidor LDAP: ssh -i key.pem ec2-user@${LDAPServer.PublicIp}
+      Cliente LDAP: ssh -i key.pem ec2-user@${LDAPClient.PublicIp}  
+      Servidor LAM: ssh -i key.pem ec2-user@${LAMServer.PublicIp}
 
   SecurityGroupId:
     Description: Security Group ID
     Value: !GetAtt LDAPSecurityGroup.GroupId
-
