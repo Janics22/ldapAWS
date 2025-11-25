@@ -41,10 +41,6 @@ mkdir -p /var/lib/ldap-account-manager/tmp
 chown -R apache:apache /var/lib/ldap-account-manager
 chmod 700 /var/lib/ldap-account-manager/config
 
-# Copiar configuración por defecto
-cp /var/www/html/lam/config/config.cfg_sample /var/lib/ldap-account-manager/config/config.cfg
-cp /var/www/html/lam/config/lam.conf_sample /var/lib/ldap-account-manager/config/lam.conf
-
 # Configurar LAM
 cat > /var/lib/ldap-account-manager/config/lam.conf << EOF
 # Server address
