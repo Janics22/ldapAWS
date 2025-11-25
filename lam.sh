@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex  # Muestra cada comando y detiene al fallar
 
 # Validar IP del servidor LDAP
 if [ -z "$1" ]; then
@@ -23,15 +23,23 @@ done
 # Actualizar sistema
 dnf update -y
 
-# Instalar Apache 2.4 (httpd24) y PHP con extensiones necesarias
-dnf install -y httpd24 php php-ldap php-mbstring epel-release ldap-account-manager
+# Habilitar EPEL
+dnf install -y epel-release
+dnf config-manager --set-enabled epel
 
-# Iniciar y habilitar Apache
-systemctl enable httpd24-httpd
-systemctl start httpd24-httpd
+# Instalar Apache y PHP
+dnf module enable -y php:8.2
+dnf install -y httpd24 php php-ldap php-mbstring wget unzip
 
-# Configurar LAM
-cat > /etc/ldap-account-manager/config.cfg << EOF
+# Descargar e instalar LAM manualmente (última versión estable)
+cd /tmp
+wget https://sourceforge.net/projects/ldap-account-manager/files/latest/download -O lam.zip
+unzip lam.zip -d /var/www/html/
+mv /var/www/html/lam-* /var/www/html/lam
+chown -R apache:apache /var/www/html/lam
+
+# Crear config.cfg
+cat > /var/www/html/lam/config.cfg << EOF
 <?php
 const CONFIG_SERVER_URL = 'http://localhost/lam';
 const CONFIG_CIPHER = 'blowfish';
@@ -46,9 +54,12 @@ const CONFIG_GROUP_MODULE = 'posixGroup';
 ?>
 EOF
 
-# Configurar permisos
-chown apache:apache /etc/ldap-account-manager/config.cfg
-chmod 640 /etc/ldap-account-manager/config.cfg
+chown apache:apache /var/www/html/lam/config.cfg
+chmod 640 /var/www/html/lam/config.cfg
+
+# Iniciar y habilitar Apache
+systemctl enable httpd24-httpd
+systemctl start httpd24-httpd
 
 # Configurar firewall
 systemctl enable firewalld
