@@ -1,53 +1,47 @@
 #!/bin/bash
 set -e
 
-echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP ==="
+echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP EN AL2023 ==="
 
 # Variables
 BASE_DN="dc=amsa,dc=udl,dc=cat"
+ADMIN_DN="cn=admin,$BASE_DN"
 ADMIN_PASSWORD="1234"
 
 # Actualizar sistema
 dnf update -y
 
-# Instalar dependencias
+# Instalar OpenLDAP y herramientas
 dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
 
-# Configurar directorios
-mkdir -p /var/lib/ldap
-mkdir -p /etc/openldap/slapd.d
-cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
-chown ldap:ldap /var/lib/ldap/*
+# Inicializar base de datos slapd
+if [ ! -f /var/lib/ldap/DB_CONFIG ]; then
+    cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+    chown ldap:ldap /var/lib/ldap/DB_CONFIG
+fi
 
-# Configurar slapd
-cat > /etc/openldap/slapd.conf << EOF
-include /etc/openldap/schema/core.schema
-include /etc/openldap/schema/cosine.schema
-include /etc/openldap/schema/nis.schema
-include /etc/openldap/schema/inetorgperson.schema
+# Configurar contraseña de admin para cn=config
+ADMIN_HASH=$(slappasswd -s $ADMIN_PASSWORD)
 
-pidfile /var/run/openldap/slapd.pid
-argsfile /var/run/openldap/slapd.args
-
-modulepath /usr/lib64/openldap
-moduleload back_mdb.la
-
-database mdb
-suffix "$BASE_DN"
-rootdn "cn=admin,$BASE_DN"
-rootpw $(slappasswd -s $ADMIN_PASSWORD)
-directory /var/lib/ldap
-
-index objectClass eq,pres
-index ou,cn,mail,surname,givenname eq,pres,sub
-index uidNumber,gidNumber,loginShell eq,pres
-index uid,memberUid eq,pres,sub
-index nisMapName,nisMapEntry eq,pres,sub
+cat > /tmp/ldap-admin.ldif <<EOF
+dn: olcDatabase={2}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: $ADMIN_HASH
 EOF
 
-# Configurar dominio base
-cat > /tmp/base.ldif << EOF
+# Iniciar slapd
+systemctl enable slapd
+systemctl start slapd
+sleep 5
+
+# Aplicar contraseña admin
+ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/ldap-admin.ldif
+
+# Crear estructura base
+cat > /tmp/base.ldif <<EOF
 dn: $BASE_DN
+objectClass: top
 objectClass: dcObject
 objectClass: organization
 o: AMSA Organization
@@ -67,8 +61,10 @@ objectClass: organizationalUnit
 ou: groups
 EOF
 
-# Configurar usuarios
-cat > /tmp/users.ldif << EOF
+ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PASSWORD" -f /tmp/base.ldif
+
+# Crear usuarios y grupos de ejemplo
+cat > /tmp/users.ldif <<EOF
 # Grupos
 dn: cn=alumnes,ou=groups,$BASE_DN
 objectClass: posixGroup
@@ -97,116 +93,12 @@ uidNumber: 1000
 gidNumber: 10002
 homeDirectory: /home/admin
 userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-# Alumnos (6 usuarios)
-dn: uid=alumne1,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne One
-sn: One
-uid: alumne1
-uidNumber: 1001
-gidNumber: 10000
-homeDirectory: /home/alumne1
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-dn: uid=alumne2,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne Two
-sn: Two
-uid: alumne2
-uidNumber: 1002
-gidNumber: 10000
-homeDirectory: /home/alumne2
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-dn: uid=alumne3,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne Three
-sn: Three
-uid: alumne3
-uidNumber: 1003
-gidNumber: 10000
-homeDirectory: /home/alumne3
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-dn: uid=alumne4,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne Four
-sn: Four
-uid: alumne4
-uidNumber: 1004
-gidNumber: 10000
-homeDirectory: /home/alumne4
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-dn: uid=alumne5,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne Five
-sn: Five
-uid: alumne5
-uidNumber: 1005
-gidNumber: 10000
-homeDirectory: /home/alumne5
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-dn: uid=alumne6,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne Six
-sn: Six
-uid: alumne6
-uidNumber: 1006
-gidNumber: 10000
-homeDirectory: /home/alumne6
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-# Professors (2 usuarios)
-dn: uid=professor1,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Professor One
-sn: Professor
-uid: professor1
-uidNumber: 2001
-gidNumber: 10001
-homeDirectory: /home/professor1
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
-
-dn: uid=professor2,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Professor Two
-sn: Professor
-uid: professor2
-uidNumber: 2002
-gidNumber: 10001
-homeDirectory: /home/professor2
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 EOF
 
-# Iniciar servicios
-systemctl enable slapd
-systemctl start slapd
-
-# Añadir estructura base y usuarios
-sleep 10
-ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/base.ldif
-ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/users.ldif
+ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PASSWORD" -f /tmp/users.ldif
 
 # Configurar firewall
+dnf install -y firewalld
 systemctl enable firewalld
 systemctl start firewalld
 firewall-cmd --permanent --add-service=ldap
@@ -215,5 +107,5 @@ firewall-cmd --reload
 
 echo "=== SERVIDOR LDAP INSTALADO ==="
 echo "Base DN: $BASE_DN"
-echo "Usuario: cn=admin,$BASE_DN"
+echo "Usuario admin: $ADMIN_DN"
 echo "Contraseña: $ADMIN_PASSWORD"
