@@ -145,9 +145,10 @@ Resources:
           set -e
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
           
-          echo "=== ESPERANDO AL SERVIDOR LDAP ==="
+          echo "=== INICIANDO INSTALACIÓN LAM ==="
           
           # Esperar a que el servidor LDAP esté listo
+          echo "Esperando al servidor LDAP..."
           for i in {1..30}; do
             if nc -z ${LDAPServer.PrivateIp} 389; then
               echo "Servidor LDAP detectado en el intento $i"
@@ -157,15 +158,16 @@ Resources:
             sleep 30
           done
           
-          # Descargar script de LAM
+          # Descargar y ejecutar script mejorado
           cd /tmp
-          curl -L -o lam.sh "${GitHubRepoURL}/lam.sh"
+          curl -L -o lam.sh "https://github.com/Janics22/ldapAWS/lam.sh"
           chmod +x lam.sh
           
-          # Ejecutar script
-          ./lam.sh ${LDAPServer.PrivateIp}
+          # Ejecutar con logging extensivo
+          ./lam.sh ${LDAPServer.PrivateIp} >> /var/log/lam-installation.log 2>&1
           
-          echo "=== INSTALACIÓN DE LAM COMPLETADA ==="
+          echo "=== INSTALACIÓN LAM COMPLETADA ==="
+
 
 Outputs:
   LDAPServerIP:
@@ -209,3 +211,4 @@ Outputs:
   SecurityGroupId:
     Description: Security Group ID
     Value: !GetAtt LDAPSecurityGroup.GroupId
+
