@@ -11,7 +11,7 @@ LDAP_SERVER=$1
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 ADMIN_DN="cn=admin,$BASE_DN"
 
-echo "=== INSTALANDO LAM ==="
+echo "=== INICIANDO INSTALACIÓN DE LAM EN AL2023 ==="
 
 # Esperar servidor LDAP
 echo "Esperando servidor LDAP..."
@@ -20,10 +20,37 @@ until nc -z $LDAP_SERVER 389; do
     sleep 10
 done
 
-# Actualizar sistema e instalar dependencias
+# Actualizar sistema
 dnf update -y
-dnf install -y epel-release
+
+# Instalar Apache y PHP
 dnf install -y httpd php php-ldap php-mbstring epel-release ldap-account-manager
+
+# Crear unidad systemd para Apache si no existe
+if ! systemctl list-unit-files | grep -q '^httpd\.service'; then
+    echo "Creando unidad systemd para Apache..."
+    cat > /etc/systemd/system/httpd.service << EOF
+[Unit]
+Description=Apache HTTP Server
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/httpd -k start
+ExecReload=/usr/sbin/httpd -k graceful
+ExecStop=/usr/sbin/httpd -k stop
+PIDFile=/run/httpd/httpd.pid
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+fi
+
+# Iniciar y habilitar Apache
+systemctl enable httpd
+systemctl start httpd
 
 # Configurar LAM
 cat > /etc/ldap-account-manager/config.cfg << EOF
@@ -44,10 +71,6 @@ EOF
 # Configurar permisos
 chown apache:apache /etc/ldap-account-manager/config.cfg
 chmod 640 /etc/ldap-account-manager/config.cfg
-
-# Iniciar y habilitar Apache
-systemctl enable httpd
-systemctl start httpd
 
 # Configurar firewall
 systemctl enable firewalld
@@ -72,5 +95,5 @@ cat > /var/www/html/index.html << EOF
 </html>
 EOF
 
-echo "=== LAM INSTALADO ==="
+echo "=== LAM INSTALADO CORRECTAMENTE ==="
 echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
