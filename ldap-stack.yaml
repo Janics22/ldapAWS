@@ -55,7 +55,7 @@ Resources:
           exec > >(tee /var/log/user-data.log) 2>&1
 
           dnf update -y
-          dnf install -y curl nc
+          dnf install -y nc
 
           echo "[INFO] Descargando server_ldap.sh"
           cd /tmp
@@ -88,7 +88,7 @@ Resources:
           exec > >(tee /var/log/user-data.log) 2>&1
 
           dnf update -y
-          dnf install -y curl nc
+          dnf install -y nc
 
           echo "[INFO] Esperando servidor LDAP en ${LDAPServer.PrivateIp}:389"
 
@@ -131,7 +131,7 @@ Resources:
           exec > >(tee /var/log/user-data.log) 2>&1
 
           dnf update -y
-          dnf install -y curl nc
+          dnf install -y nc
 
           echo "[INFO] Esperando servidor LDAP en ${LDAPServer.PrivateIp}:389"
 
@@ -175,3 +175,4 @@ Outputs:
 
   SecurityGroupId:
     Value: !GetAtt LDAPSecurityGroup.GroupId
+
