@@ -7,8 +7,10 @@ echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP ==="
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 ADMIN_PASSWORD="1234"
 
-# Actualizar e instalar
+# Actualizar sistema
 dnf update -y
+
+# Instalar dependencias
 dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
 
 # Configurar directorios
@@ -18,7 +20,7 @@ cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
 chown ldap:ldap /var/lib/ldap/*
 
 # Configurar slapd
-cat > /tmp/slapd.conf << EOF
+cat > /etc/openldap/slapd.conf << EOF
 include /etc/openldap/schema/core.schema
 include /etc/openldap/schema/cosine.schema
 include /etc/openldap/schema/nis.schema
@@ -96,7 +98,7 @@ gidNumber: 10002
 homeDirectory: /home/admin
 userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-# Alumnos
+# Alumnos (6 usuarios)
 dn: uid=alumne1,ou=users,$BASE_DN
 objectClass: inetOrgPerson
 objectClass: posixAccount
@@ -169,7 +171,7 @@ gidNumber: 10000
 homeDirectory: /home/alumne6
 userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-# Professors
+# Professors (2 usuarios)
 dn: uid=professor1,ou=users,$BASE_DN
 objectClass: inetOrgPerson
 objectClass: posixAccount
@@ -198,6 +200,11 @@ EOF
 # Iniciar servicios
 systemctl enable slapd
 systemctl start slapd
+
+# Añadir estructura base y usuarios
+sleep 10
+ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/base.ldif
+ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/users.ldif
 
 # Configurar firewall
 systemctl enable firewalld
