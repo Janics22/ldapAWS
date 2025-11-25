@@ -110,6 +110,7 @@ systemctl enable httpd
 systemctl start httpd
 
 # Configurar firewall
+dnf install -y firewalld
 systemctl enable firewalld
 systemctl start firewalld
 firewall-cmd --permanent --add-service=http
