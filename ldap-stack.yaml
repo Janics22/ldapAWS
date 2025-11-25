@@ -6,7 +6,7 @@ Parameters:
     Description: Nombre de un key pair EC2 existente
     Type: 'AWS::EC2::KeyPair::KeyName'
     ConstraintDescription: debe ser el nombre de un key pair EC2 existente
-  
+
   InstanceType:
     Description: Tipo de instancia EC2
     Type: String
@@ -56,7 +56,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
-      ImageId: ami-0c02fb55956c7d316
+      ImageId: ami-0e306788ff2473ccb   # Amazon Linux 2 oficial
       SecurityGroupIds:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
@@ -67,17 +67,17 @@ Resources:
           #!/bin/bash
           set -e
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
-          
+
           echo "=== INICIANDO INSTALACIÓN DEL SERVIDOR LDAP ==="
-          
+
           # Descargar script del servidor LDAP desde GitHub
           cd /tmp
           curl -L -o server_ldap.sh "${GitHubRepoURL}/server_ldap.sh"
           chmod +x server_ldap.sh
-          
+
           # Ejecutar script
           ./server_ldap.sh
-          
+
           echo "=== INSTALACIÓN DEL SERVIDOR LDAP COMPLETADA ==="
 
   # Cliente LDAP
@@ -86,7 +86,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
-      ImageId: ami-0c02fb55956c7d316
+      ImageId: ami-0e306788ff2473ccb
       SecurityGroupIds:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
@@ -97,9 +97,9 @@ Resources:
           #!/bin/bash
           set -e
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
-          
+
           echo "=== ESPERANDO AL SERVIDOR LDAP ==="
-          
+
           # Esperar a que el servidor LDAP esté listo
           for i in {1..30}; do
             if nc -z ${LDAPServer.PrivateIp} 389; then
@@ -109,15 +109,15 @@ Resources:
             echo "Intento $i/30 - Esperando servidor LDAP..."
             sleep 30
           done
-          
+
           # Descargar script del cliente LDAP desde GitHub
           cd /tmp
           curl -L -o client_ldap.sh "${GitHubRepoURL}/client_ldap.sh"
           chmod +x client_ldap.sh
-          
+
           # Ejecutar script
           ./client_ldap.sh ${LDAPServer.PrivateIp}
-          
+
           echo "=== CONFIGURACIÓN DEL CLIENTE LDAP COMPLETADA ==="
 
   # Servidor LAM
@@ -126,7 +126,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
-      ImageId: ami-0c02fb55956c7d316
+      ImageId: ami-0e306788ff2473ccb
       SecurityGroupIds:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
@@ -137,9 +137,9 @@ Resources:
           #!/bin/bash
           set -e
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
-          
+
           echo "=== ESPERANDO AL SERVIDOR LDAP ==="
-          
+
           # Esperar a que el servidor LDAP esté listo
           for i in {1..30}; do
             if nc -z ${LDAPServer.PrivateIp} 389; then
@@ -149,15 +149,15 @@ Resources:
             echo "Intento $i/30 - Esperando servidor LDAP..."
             sleep 30
           done
-          
+
           # Descargar script de LAM desde GitHub
           cd /tmp
           curl -L -o lam.sh "${GitHubRepoURL}/lam.sh"
           chmod +x lam.sh
-          
+
           # Ejecutar script
           ./lam.sh ${LDAPServer.PrivateIp}
-          
+
           echo "=== INSTALACIÓN DE LAM COMPLETADA ==="
 
 Outputs:
@@ -182,8 +182,8 @@ Outputs:
     Value: !Sub |
       🌐 LDAP Account Manager: http://${LAMServer.PublicIp}/lam
       🔐 Usuario: cn=admin,dc=amsa,dc=udl,dc=cat
-      🔑 Contraseña: 1234
-      
+      🔑 Contraseña: lam
+
       📊 Servidor LDAP: ${LDAPServer.PublicIp}
       💻 Cliente LDAP: ${LDAPClient.PublicIp}
       🖥️ Servidor LAM: ${LAMServer.PublicIp}
