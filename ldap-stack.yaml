@@ -5,7 +5,6 @@ Parameters:
   KeyName:
     Description: Nombre de un key pair EC2 existente
     Type: 'AWS::EC2::KeyPair::KeyName'
-    ConstraintDescription: debe ser el nombre de un key pair EC2 existente
 
   InstanceType:
     Description: Tipo de instancia EC2
@@ -17,189 +16,162 @@ Parameters:
       - t3.micro
       - t3.small
 
-  GitHubRepoURL:
-    Description: URL base del repositorio GitHub con los scripts
+  GitHubRawURL:
+    Description: URL RAW del repositorio GitHub con los scripts
     Type: String
-    Default: 'https://raw.githubusercontent.com/Janics22/ldapAWS/main/server_ldap.sh'
+    Default: 'https://raw.githubusercontent.com/Janics22/ldapAWS/main'
 
 Resources:
-  # Security Group completo
+
   LDAPSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: Security Group para servidores LDAP
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 389
-          ToPort: 389
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 636
-          ToPort: 636
-          CidrIp: 0.0.0.0/0
+        - { IpProtocol: tcp, FromPort: 22,  ToPort: 22,  CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 80,  ToPort: 80,  CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 389, ToPort: 389, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 636, ToPort: 636, CidrIp: 0.0.0.0/0 }
 
-  # Servidor LDAP
+  # =============================
+  # SERVIDOR LDAP
+  # =============================
   LDAPServer:
     Type: 'AWS::EC2::Instance'
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
       ImageId: ami-0fa3fe0fa7920f68e
-      SecurityGroupIds:
-        - !GetAtt LDAPSecurityGroup.GroupId
+      SecurityGroupIds: [ !GetAtt LDAPSecurityGroup.GroupId ]
       Tags:
         - Key: Name
           Value: ldap-server
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          set -e
-          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          set -euxo pipefail
 
-          echo "=== INICIANDO INSTALACIÓN DEL SERVIDOR LDAP ==="
+          exec > >(tee /var/log/user-data.log) 2>&1
 
-          # Descargar script del servidor LDAP desde GitHub
+          dnf update -y
+          dnf install -y curl nc
+
+          echo "[INFO] Descargando server_ldap.sh"
           cd /tmp
-          curl -L -o server_ldap.sh "${GitHubRepoURL}/server_ldap.sh"
+          curl -L -o server_ldap.sh "${GitHubRawURL}/server_ldap.sh"
           chmod +x server_ldap.sh
 
-          # Ejecutar script
-          ./server_ldap.sh
+          echo "[INFO] Ejecutando script servidor LDAP"
+          /tmp/server_ldap.sh
 
-          echo "=== INSTALACIÓN DEL SERVIDOR LDAP COMPLETADA ==="
+          echo "[INFO] Servidor LDAP instalado"
 
-  # Cliente LDAP
+  # =============================
+  # CLIENTE LDAP
+  # =============================
   LDAPClient:
     Type: 'AWS::EC2::Instance'
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
       ImageId: ami-0fa3fe0fa7920f68e
-      SecurityGroupIds:
-        - !GetAtt LDAPSecurityGroup.GroupId
+      SecurityGroupIds: [ !GetAtt LDAPSecurityGroup.GroupId ]
       Tags:
         - Key: Name
           Value: ldap-client
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          set -e
-          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          set -euxo pipefail
 
-          echo "=== ESPERANDO AL SERVIDOR LDAP ==="
+          exec > >(tee /var/log/user-data.log) 2>&1
 
-          # Esperar a que el servidor LDAP esté listo
+          dnf update -y
+          dnf install -y curl nc
+
+          echo "[INFO] Esperando servidor LDAP en ${LDAPServer.PrivateIp}:389"
+
           for i in {1..30}; do
-            if nc -z ${LDAPServer.PrivateIp} 389; then
-              echo "Servidor LDAP detectado en el intento $i"
-              break
-            fi
-            echo "Intento $i/30 - Esperando servidor LDAP..."
-            sleep 30
+              if nc -z ${LDAPServer.PrivateIp} 389; then
+                  echo "[INFO] Servidor LDAP disponible"
+                  break
+              fi
+              echo "[WARN] Servidor aún no responde, reintentando..."
+              sleep 10
           done
 
-          # Descargar script del cliente LDAP desde GitHub
           cd /tmp
-          curl -L -o client_ldap.sh "${GitHubRepoURL}/client_ldap.sh"
+          curl -L -o client_ldap.sh "${GitHubRawURL}/client_ldap.sh"
           chmod +x client_ldap.sh
 
-          # Ejecutar script
-          ./client_ldap.sh ${LDAPServer.PrivateIp}
+          echo "[INFO] Ejecutando script cliente LDAP"
+          /tmp/client_ldap.sh ${LDAPServer.PrivateIp}
 
-          echo "=== CONFIGURACIÓN DEL CLIENTE LDAP COMPLETADA ==="
+          echo "[INFO] Cliente LDAP configurado"
 
-  # Servidor LAM
+  # =============================
+  # SERVIDOR LAM
+  # =============================
   LAMServer:
     Type: 'AWS::EC2::Instance'
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
       ImageId: ami-0fa3fe0fa7920f68e
-      SecurityGroupIds:
-        - !GetAtt LDAPSecurityGroup.GroupId
+      SecurityGroupIds: [ !GetAtt LDAPSecurityGroup.GroupId ]
       Tags:
         - Key: Name
           Value: ldap-lam
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          set -e
-          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          set -euxo pipefail
 
-          echo "=== ESPERANDO AL SERVIDOR LDAP ==="
+          exec > >(tee /var/log/user-data.log) 2>&1
 
-          # Esperar a que el servidor LDAP esté listo
+          dnf update -y
+          dnf install -y curl nc
+
+          echo "[INFO] Esperando servidor LDAP en ${LDAPServer.PrivateIp}:389"
+
           for i in {1..30}; do
-            if nc -z ${LDAPServer.PrivateIp} 389; then
-              echo "Servidor LDAP detectado en el intento $i"
-              break
-            fi
-            echo "Intento $i/30 - Esperando servidor LDAP..."
-            sleep 30
+              if nc -z ${LDAPServer.PrivateIp} 389; then
+                  echo "[INFO] Servidor LDAP disponible"
+                  break
+              fi
+              echo "[WARN] Servidor aún no responde, reintentando..."
+              sleep 10
           done
 
-          # Descargar script de LAM desde GitHub
           cd /tmp
-          curl -L -o lam.sh "${GitHubRepoURL}/lam.sh"
+          curl -L -o lam.sh "${GitHubRawURL}/lam.sh"
           chmod +x lam.sh
 
-          # Ejecutar script
-          ./lam.sh ${LDAPServer.PrivateIp}
+          echo "[INFO] Ejecutando script LAM"
+          /tmp/lam.sh ${LDAPServer.PrivateIp}
 
-          echo "=== INSTALACIÓN DE LAM COMPLETADA ==="
+          echo "[INFO] LAM instalado"
 
 Outputs:
+
   LDAPServerIP:
-    Description: IP pública del servidor LDAP
     Value: !GetAtt LDAPServer.PublicIp
 
   LDAPClientIP:
-    Description: IP pública del cliente LDAP
     Value: !GetAtt LDAPClient.PublicIp
 
   LAMServerIP:
-    Description: IP pública del servidor LAM
     Value: !GetAtt LAMServer.PublicIp
 
   LAMURL:
-    Description: URL de acceso a LDAP Account Manager
-    Value: !Sub 'http://${LAMServer.PublicIp}/lam'
+    Value: !Sub "http://${LAMServer.PublicIp}/lam"
 
   AccessInfo:
-    Description: Información de acceso
     Value: !Sub |
-      🌐 LDAP Account Manager: http://${LAMServer.PublicIp}/lam
-      🔐 Usuario: cn=admin,dc=amsa,dc=udl,dc=cat
-      🔑 Contraseña: lam
-
-      📊 Servidor LDAP: ${LDAPServer.PublicIp}
-      💻 Cliente LDAP: ${LDAPClient.PublicIp}
-      🖥️ Servidor LAM: ${LAMServer.PublicIp}
-
-  SSHCommands:
-    Description: Comandos SSH para conexión
-    Value: !Sub |
-      Servidor LDAP: ssh -i key.pem ec2-user@${LDAPServer.PublicIp}
-      Cliente LDAP: ssh -i key.pem ec2-user@${LDAPClient.PublicIp}  
-      Servidor LAM: ssh -i key.pem ec2-user@${LAMServer.PublicIp}
+      LAM: http://${LAMServer.PublicIp}/lam
+      Usuario: cn=admin,dc=amsa,dc=udl,dc=cat
+      Password: lam
 
   SecurityGroupId:
-    Description: Security Group ID
     Value: !GetAtt LDAPSecurityGroup.GroupId
-
-
-
-
-
