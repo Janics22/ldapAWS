@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Infraestructura LDAP completa - Servidor LDAP, Cliente y LAM'
+
+Parameters:
+  KeyName:
+    Description: Nombre de un key pair EC2 existente
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: debe ser el nombre de un key pair EC2 existente
+  
+  InstanceType:
+    Description: Tipo de instancia EC2
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t3.micro
+      - t3.small
+
+Resources:
+  # Security Group
+  LDAPSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Security Group para servidores LDAP
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 389
+          ToPort: 389
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 636
+          ToPort: 636
+          CidrIp: 0.0.0.0/0
+
+  # Servidor LDAP
+  LDAPServer:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: ami-0c02fb55956c7d316
+      SecurityGroupIds:
+        - !GetAtt LDAPSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          
+          # Descargar script del servidor LDAP
+          cd /tmp
+          cat > server_ldap.sh << 'EOF'
+          ${SERVER_LDAP_SCRIPT}
+          EOF
+          
+          chmod +x server_ldap.sh
+          ./server_ldap.sh
+
+  # Cliente LDAP
+  LDAPClient:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: ami-0c02fb55956c7d316
+      SecurityGroupIds:
+        - !GetAtt LDAPSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          
+          # Esperar a que el servidor LDAP esté listo
+          echo "Esperando al servidor LDAP..."
+          while ! nc -z ${LDAPServer.PrivateIp} 389; do
+            sleep 30
+          done
+          
+          # Descargar script del cliente LDAP
+          cd /tmp
+          cat > client_ldap.sh << 'EOF'
+          ${CLIENT_LDAP_SCRIPT}
+          EOF
+          
+          chmod +x client_ldap.sh
+          ./client_ldap.sh ${LDAPServer.PrivateIp}
+
+  # Servidor LAM
+  LAMServer:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: ami-0c02fb55956c7d316
+      SecurityGroupIds:
+        - !GetAtt LDAPSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          
+          # Esperar a que el servidor LDAP esté listo
+          echo "Esperando al servidor LDAP..."
+          while ! nc -z ${LDAPServer.PrivateIp} 389; do
+            sleep 30
+          done
+          
+          # Descargar script de LAM
+          cd /tmp
+          cat > lam.sh << 'EOF'
+          ${LAM_SCRIPT}
+          EOF
+          
+          chmod +x lam.sh
+          ./lam.sh ${LDAPServer.PrivateIp}
+
+Outputs:
+  LDAPServerIP:
+    Description: IP pública del servidor LDAP
+    Value: !GetAtt LDAPServer.PublicIp
+
+  LDAPClientIP:
+    Description: IP pública del cliente LDAP
+    Value: !GetAtt LDAPClient.PublicIp
+
+  LAMServerIP:
+    Description: IP pública del servidor LAM
+    Value: !GetAtt LAMServer.PublicIp
+
+  LAMURL:
+    Description: URL de acceso a LDAP Account Manager
+    Value: !Sub 'http://${LAMServer.PublicIp}/lam'
+
+  AccessInfo:
+    Description: Información de acceso
+    Value: !Sub |
+      LDAP Account Manager: http://${LAMServer.PublicIp}/lam
+      Usuario: cn=admin,dc=amsa,dc=udl,dc=cat
+      Contraseña: 1234
