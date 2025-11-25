@@ -56,7 +56,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
-      ImageId: ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}"
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}"
       SecurityGroupIds:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
@@ -86,7 +86,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
-      ImageId: ami-0e306788ff2473ccb
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}"
       SecurityGroupIds:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
@@ -126,7 +126,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
-      ImageId: ami-0e306788ff2473ccb
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}"
       SecurityGroupIds:
         - !GetAtt LDAPSecurityGroup.GroupId
       Tags:
@@ -198,5 +198,6 @@ Outputs:
   SecurityGroupId:
     Description: Security Group ID
     Value: !GetAtt LDAPSecurityGroup.GroupId
+
 
 
