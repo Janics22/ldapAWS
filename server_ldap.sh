@@ -403,3 +403,13 @@ echo "=== SERVIDOR LDAP INSTALADO COMPLETAMENTE ==="
 echo "Base DN: $BASE_DN"
 echo "Usuario admin: cn=admin,$BASE_DN"
 echo "Contraseña: $ADMIN_PASSWORD"
+
+# Crear archivo de señal de que el servidor está listo
+echo "Creando señal de servidor listo..."
+touch /tmp/ldap_server_ready
+echo "LDAP_SERVER_READY" > /tmp/ldap_server_ready
+
+# Configurar permisos para que otros servicios puedan verificar
+chmod 644 /tmp/ldap_server_ready
+
+echo "=== SEÑAL DE SERVIDOR LISTO CREADA ==="
