@@ -20,25 +20,38 @@ if [ ! -f /var/lib/ldap/DB_CONFIG ]; then
     chown ldap:ldap /var/lib/ldap/DB_CONFIG
 fi
 
-# Configurar contraseña de admin para cn=config
-ADMIN_HASH=$(slappasswd -s $ADMIN_PASSWORD)
+# Generar hash de contraseña admin
+ADMIN_HASH=$(slappasswd -s "$ADMIN_PASSWORD")
 
-cat > /tmp/ldap-admin.ldif <<EOF
+# Iniciar slapd antes de modificar cn=config
+systemctl enable slapd
+systemctl start slapd
+sleep 5
+
+echo "=== CONFIGURANDO ROOTDN Y ROOTPW ==="
+
+# Establecer olcRootDN correctamente
+cat > /tmp/set-rootdn.ldif <<EOF
+dn: olcDatabase={2}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: $ADMIN_DN
+EOF
+
+ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/set-rootdn.ldif
+
+# Establecer contraseña admin
+cat > /tmp/set-rootpw.ldif <<EOF
 dn: olcDatabase={2}mdb,cn=config
 changetype: modify
 replace: olcRootPW
 olcRootPW: $ADMIN_HASH
 EOF
 
-# Iniciar slapd
-systemctl enable slapd
-systemctl start slapd
-sleep 5
+ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/set-rootpw.ldif
 
-# Aplicar contraseña admin
-ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/ldap-admin.ldif
+echo "=== CREANDO ESTRUCTURA BASE ==="
 
-# Crear estructura base
 cat > /tmp/base.ldif <<EOF
 dn: $BASE_DN
 objectClass: top
@@ -48,9 +61,11 @@ o: AMSA Organization
 dc: amsa
 
 dn: cn=admin,$BASE_DN
+objectClass: simpleSecurityObject
 objectClass: organizationalRole
 cn: admin
 description: LDAP Administrator
+userPassword: $ADMIN_HASH
 
 dn: ou=users,$BASE_DN
 objectClass: organizationalUnit
@@ -63,7 +78,8 @@ EOF
 
 ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PASSWORD" -f /tmp/base.ldif
 
-# Crear usuarios y grupos de ejemplo
+echo "=== CREANDO USUARIOS Y GRUPOS ==="
+
 cat > /tmp/users.ldif <<EOF
 # Grupos
 dn: cn=alumnes,ou=groups,$BASE_DN
@@ -81,7 +97,7 @@ objectClass: posixGroup
 cn: admins
 gidNumber: 10002
 
-# Admin
+# Admin user
 dn: uid=admin,ou=users,$BASE_DN
 objectClass: inetOrgPerson
 objectClass: posixAccount
@@ -92,20 +108,20 @@ uid: admin
 uidNumber: 1000
 gidNumber: 10002
 homeDirectory: /home/admin
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+userPassword: $ADMIN_HASH
 EOF
 
 ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PASSWORD" -f /tmp/users.ldif
 
-# Configurar firewall
-dnf install -y firewalld
+echo "=== CONFIGURANDO FIREWALL ==="
+
 systemctl enable firewalld
 systemctl start firewalld
 firewall-cmd --permanent --add-service=ldap
 firewall-cmd --permanent --add-service=ldaps
 firewall-cmd --reload
 
-echo "=== SERVIDOR LDAP INSTALADO ==="
+echo "=== SERVIDOR LDAP INSTALADO Y CONFIGURADO ==="
 echo "Base DN: $BASE_DN"
-echo "Usuario admin: $ADMIN_DN"
+echo "Admin DN: $ADMIN_DN"
 echo "Contraseña: $ADMIN_PASSWORD"
