@@ -25,7 +25,7 @@ done
 dnf update -y
 
 # Instalar Apache y PHP con extensiones necesarias
-dnf install -y httpd php php-ldap php-mbstring php-xml php-json wget tar
+dnf install -y httpd php php-ldap php-mbstring php-gd php-gmp php-zip wget tar
 
 # Descargar e instalar LAM desde código fuente
 cd /tmp
