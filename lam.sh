@@ -26,8 +26,6 @@ dnf update -y
 
 # Instalar Apache y PHP con extensiones necesarias
 dnf install -y httpd php php-ldap php-mbstring php-gd php-gmp php-zip wget tar
-sudo wget https://github.com/LDAPAccountManager/lam/releases/download/9.0.RC1/ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm
-dnf install ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm
 
 # Descargar e instalar LAM desde código fuente
 cd /tmp
