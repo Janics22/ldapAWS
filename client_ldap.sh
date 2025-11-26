@@ -20,6 +20,8 @@ done
 # Instalar paquetes
 dnf update -y
 dnf install -y openldap-clients nss-pam-ldapd authselect
+dnf install -y httpd php php-ldap php-mbstring php-gd php-gmp php-zip
+
 
 # Configurar LDAP
 cat > /etc/openldap/ldap.conf << EOF
