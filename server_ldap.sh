@@ -1,268 +1,219 @@
 #!/bin/bash
+set -e
 
-VER="2.6.3"
-BASE="dc=amsa,dc=udl,dc=cat"
-PATH_PKI="/etc/pki/tls"
-DC="amsa"
-HOSTNAME="${HOSTNAME_OVERRIDE:-$HOSTNAME}"
+echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP ==="
 
+# Variables
+BASE_DN="dc=amsa,dc=udl,dc=cat"
+ADMIN_PASSWORD="1234"
 
-dnf install cyrus-sasl-devel make libtool autoconf libtool-ltdl-devel\
- openssl-devel libdb-devel tar gcc perl perl-devel wget vim screen -y
+# Actualizar sistema
+dnf update -y
 
-groupadd -g 55 ldap
-useradd -r -M -d /var/lib/openldap -u 55 -g 55 -s /usr/sbin/nologin ldap
+# Instalar dependencias
+dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
 
-cd /tmp
-wget ftp://ftp.openldap.org/pub/OpenLDAP/openldap-release/openldap-$VER.tgz
-tar xzf openldap-$VER.tgz
-cd openldap-$VER
+# Configurar directorios
+mkdir -p /var/lib/ldap
+mkdir -p /etc/openldap/slapd.d
+cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+chown ldap:ldap /var/lib/ldap/*
 
-./configure --prefix=/usr --sysconfdir=/etc --disable-static \
---enable-debug --with-tls=openssl --with-cyrus-sasl --enable-dynamic \
---enable-crypt --enable-spasswd --enable-slapd --enable-modules \
---enable-rlookups  --disable-sql  \
---enable-ppolicy --enable-syslog
+# Configurar slapd
+cat > /etc/openldap/slapd.conf << EOF
+include /etc/openldap/schema/core.schema
+include /etc/openldap/schema/cosine.schema
+include /etc/openldap/schema/nis.schema
+include /etc/openldap/schema/inetorgperson.schema
 
-make depend
-make
-cd contrib/slapd-modules/passwd/sha2
-make
-cd ../../../..
+pidfile /var/run/openldap/slapd.pid
+argsfile /var/run/openldap/slapd.args
 
-echo "... Installing (open-ldap)"
-make install
+modulepath /usr/lib64/openldap
+moduleload back_mdb.la
 
-cd contrib/slapd-modules/passwd/sha2
-make install
+database mdb
+suffix "$BASE_DN"
+rootdn "cn=admin,$BASE_DN"
+rootpw $(slappasswd -s $ADMIN_PASSWORD)
+directory /var/lib/ldap
 
-ls -la /etc/openldap/
+index objectClass eq,pres
+index ou,cn,mail,surname,givenname eq,pres,sub
+index uidNumber,gidNumber,loginShell eq,pres
+index uid,memberUid eq,pres,sub
+index nisMapName,nisMapEntry eq,pres,sub
+EOF
 
-ls -la /usr/libexec/openldap
-
-mkdir /var/lib/openldap /etc/openldap/slapd.d
-
-chown -R ldap:ldap /var/lib/openldap
-chown root:ldap /etc/openldap/slapd.conf
-chmod 640 /etc/openldap/slapd.conf
-
-
-cat > /etc/systemd/system/slapd.service << 'EOL'
-[Unit]
-Description=OpenLDAP Server Daemon
-After=syslog.target network-online.target
-Documentation=man:slapd
-Documentation=man:slapd-mdb
-
-[Service]
-Type=forking
-PIDFile=/var/lib/openldap/slapd.pid
-Environment="SLAPD_URLS=ldap:/// ldapi:/// ldaps:///"
-Environment="SLAPD_OPTIONS=-F /etc/openldap/slapd.d"
-ExecStart=/usr/libexec/slapd -u ldap -g ldap -h ${SLAPD_URLS} $SLAPD_OPTIONS
-
-[Install]
-WantedBy=multi-user.target
-EOL
-
-mv /etc/openldap/slapd.ldif /etc/openldap/slapd.ldif.default
-
-
-
-cat > /etc/openldap/slapd.ldif << 'EOL'
-dn: cn=config
-objectClass: olcGlobal
-cn: config
-olcArgsFile: /var/lib/openldap/slapd.args
-olcPidFile: /var/lib/openldap/slapd.pid
-olcTLSCipherSuite: TLSv1.2:HIGH:!aNULL:!eNULL
-olcTLSProtocolMin: 3.3
-
-dn: cn=schema,cn=config
-objectClass: olcSchemaConfig
-cn: schema
-
-dn: cn=module,cn=config
-objectClass: olcModuleList
-cn: module
-olcModulepath: /usr/libexec/openldap
-olcModuleload: back_mdb.la
-
-dn: cn=module,cn=config
-objectClass: olcModuleList
-cn: module
-olcModulepath: /usr/local/libexec/openldap
-olcModuleload: pw-sha2.la
-
-include: file:///etc/openldap/schema/core.ldif
-include: file:///etc/openldap/schema/cosine.ldif
-include: file:///etc/openldap/schema/nis.ldif
-include: file:///etc/openldap/schema/inetorgperson.ldif
-
-dn: olcDatabase=frontend,cn=config
-objectClass: olcDatabaseConfig
-objectClass: olcFrontendConfig
-olcDatabase: frontend
-olcPasswordHash: {SSHA512}CBVaUdQC9mVvAi+0O92J3hA+aPdiWUqf4lVr6bGRAUsFJX5aFOEb+1pSsY8PQwW1UKuuCGO2+160HotnfjXIaRKlryVekLnu
-olcAccess: to dn.base="cn=Subschema" by * read
-olcAccess: to *
-  by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" manage
-  by * none
-
-dn: olcDatabase=config,cn=config
-objectClass: olcDatabaseConfig
-olcDatabase: config
-olcRootDN: cn=config
-olcAccess: to *
-  by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" manage
-  by * none
-EOL
-
-cd /etc/openldap/
-slapadd -n 0 -F /etc/openldap/slapd.d -l /etc/openldap/slapd.ldif
-chown -R ldap:ldap /etc/openldap/slapd.d
-
-systemctl daemon-reload
-systemctl enable --now slapd
-
-echo "...Generating rootdn file"
-cat << EOL >> rootdn.ldif
-dn: olcDatabase=mdb,cn=config
-objectClass: olcDatabaseConfig
-objectClass: olcMdbConfig
-olcDatabase: mdb
-olcDbMaxSize: 42949672960
-olcDbDirectory: /var/lib/openldap
-olcSuffix: $BASE
-olcRootDN: cn=admin,$BASE
-olcRootPW: {SSHA512}CBVaUdQC9mVvAi+0O92J3hA+aPdiWUqf4lVr6bGRAUsFJX5aFOEb+1pSsY8PQwW1UKuuCGO2+160HotnfjXIaRKlryVekLnu
-olcDbIndex: uid pres,eq
-olcDbIndex: cn,sn pres,eq,approx,sub
-olcDbIndex: mail pres,eq,sub
-olcDbIndex: objectClass pres,eq
-olcDbIndex: loginShell pres,eq
-olcAccess: to attrs=userPassword,shadowLastChange,shadowExpire
-  by self write
-  by anonymous auth
-  by dn.subtree="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" manage
-  by dn.subtree="ou=system,$BASE" read
-  by * none
-olcAccess: to dn.subtree="ou=system $BASE"
-  by dn.subtree="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" manage
-  by * none
-olcAccess: to dn.subtree="$BASE"
-  by dn.subtree="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" manage
-  by users read
-  by * none
-EOL
-
-ldapadd -Y EXTERNAL -H ldapi:/// -f rootdn.ldif
-
-echo "...Generating basedn file"
-cat << EOL >> basedn.ldif
-dn: $BASE
+# Configurar dominio base
+cat > /tmp/base.ldif << EOF
+dn: $BASE_DN
 objectClass: dcObject
 objectClass: organization
-objectClass: top
-o: ASV
-dc: $DC
+o: AMSA Organization
+dc: amsa
 
-dn: ou=groups,$BASE
-objectClass: organizationalUnit
-objectClass: top
-ou: groups
+dn: cn=admin,$BASE_DN
+objectClass: organizationalRole
+cn: admin
+description: LDAP Administrator
 
-dn: ou=users,$BASE
+dn: ou=users,$BASE_DN
 objectClass: organizationalUnit
-objectClass: top
 ou: users
 
-dn: ou=system,$BASE
+dn: ou=groups,$BASE_DN
 objectClass: organizationalUnit
-objectClass: top
-ou: system
-EOL
+ou: groups
+EOF
 
-ldapadd -Y EXTERNAL -H ldapi:/// -f basedn.ldif
-
-cat << EOL >> users.ldif
-dn: cn=osproxy,ou=system,$BASE
-objectClass: organizationalRole
-objectClass: simpleSecurityObject
-cn: osproxy
-userPassword:{SSHA512}CBVaUdQC9mVvAi+0O92J3hA+aPdiWUqf4lVr6bGRAUsFJX5aFOEb+1pSsY8PQwW1UKuuCGO2+160HotnfjXIaRKlryVekLnu
-description: OS proxy for resolving UIDs/GIDs
-
-EOL
-
-groups=("programadors" "dissenyadors")
-gids=("5000" "5001")
-users=("jordi" "manel")
-sn=("mateo" "lopez")
-uids=("4000" "4001")
-programadors=("jordi")
-dissenyadors=("manel")
-
-for (( j=0; j<${#groups[@]}; j++ ))
-do
-cat << EOL >> users.ldif
-dn: cn=${groups[$j]},ou=groups,$BASE
+# Configurar usuarios
+cat > /tmp/users.ldif << EOF
+# Grupos
+dn: cn=alumnes,ou=groups,$BASE_DN
 objectClass: posixGroup
-cn: ${groups[$j]}
-gidNumber: ${gids[$j]}
+cn: alumnes
+gidNumber: 10000
 
-EOL
-done
+dn: cn=professors,ou=groups,$BASE_DN
+objectClass: posixGroup
+cn: professors
+gidNumber: 10001
 
-for (( j=0; j<${#users[@]}; j++ ))
-do
-cat << EOL >> users.ldif
-dn: uid=${users[$j]},ou=users,$BASE
+dn: cn=admins,ou=groups,$BASE_DN
+objectClass: posixGroup
+cn: admins
+gidNumber: 10002
+
+# Admin
+dn: uid=admin,ou=users,$BASE_DN
+objectClass: inetOrgPerson
 objectClass: posixAccount
 objectClass: shadowAccount
+cn: Admin User
+sn: Admin
+uid: admin
+uidNumber: 1000
+gidNumber: 10002
+homeDirectory: /home/admin
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+
+# Alumnos (6 usuarios)
+dn: uid=alumne1,ou=users,$BASE_DN
 objectClass: inetOrgPerson
-cn: ${users[$j]}
-sn: ${sn[$j]}
-uidNumber: ${uids[$j]}
-gidNumber: ${uids[$j]}
-homeDirectory: /home/${users[$j]}
-loginShell: /bin/sh
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne One
+sn: One
+uid: alumne1
+uidNumber: 1001
+gidNumber: 10000
+homeDirectory: /home/alumne1
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-EOL
-done
+dn: uid=alumne2,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Two
+sn: Two
+uid: alumne2
+uidNumber: 1002
+gidNumber: 10000
+homeDirectory: /home/alumne2
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-ldapadd -Y EXTERNAL -H ldapi:/// -f users.ldif
+dn: uid=alumne3,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Three
+sn: Three
+uid: alumne3
+uidNumber: 1003
+gidNumber: 10000
+homeDirectory: /home/alumne3
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-commonname=$HOSTNAME
-country=ES
-state=Spain
-locality=Igualada
-organization=UdL
-organizationalunit=IT
-email=admin@udl.cat
+dn: uid=alumne4,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Four
+sn: Four
+uid: alumne4
+uidNumber: 1004
+gidNumber: 10000
+homeDirectory: /home/alumne4
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-echo "Generating key request for $commonname"
-openssl req -days 500 -newkey rsa:4096 \
-	    -keyout "$PATH_PKI/ldapkey.pem" -nodes \
-	    -sha256 -x509 -out "$PATH_PKI/ldapcert.pem" \
-	    -subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$commonname/emailAddress=$email"
+dn: uid=alumne5,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Five
+sn: Five
+uid: alumne5
+uidNumber: 1005
+gidNumber: 10000
+homeDirectory: /home/alumne5
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-chown ldap:ldap "$PATH_PKI/ldapkey.pem"
-chmod 400 "$PATH_PKI/ldapkey.pem"
-cat "$PATH_PKI/ldapcert.pem" > "$PATH_PKI/cacerts.pem"
+dn: uid=alumne6,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Six
+sn: Six
+uid: alumne6
+uidNumber: 1006
+gidNumber: 10000
+homeDirectory: /home/alumne6
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-cat << EOL >> add-tls.ldif
-dn: cn=config
-changetype: modify
-add: olcTLSCACertificateFile
-olcTLSCACertificateFile: "$PATH_PKI/cacerts.pem"
--
-add: olcTLSCertificateKeyFile
-olcTLSCertificateKeyFile: "$PATH_PKI/ldapkey.pem"
--
-add: olcTLSCertificateFile
-olcTLSCertificateFile: "$PATH_PKI/ldapcert.pem"
-EOL
+# Professors (2 usuarios)
+dn: uid=professor1,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Professor One
+sn: Professor
+uid: professor1
+uidNumber: 2001
+gidNumber: 10001
+homeDirectory: /home/professor1
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
+dn: uid=professor2,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Professor Two
+sn: Professor
+uid: professor2
+uidNumber: 2002
+gidNumber: 10001
+homeDirectory: /home/professor2
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+EOF
 
-ldapadd -Y EXTERNAL -H ldapi:/// -f add-tls.ldif
+# Iniciar servicios
+systemctl enable slapd
+systemctl start slapd
+
+# Añadir estructura base y usuarios
+sleep 10
+ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/base.ldif
+ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/users.ldif
+
+# Configurar firewall
+systemctl enable firewalld
+systemctl start firewalld
+firewall-cmd --permanent --add-service=ldap
+firewall-cmd --permanent --add-service=ldaps
+firewall-cmd --reload
+
+echo "=== SERVIDOR LDAP INSTALADO ==="
+echo "Base DN: $BASE_DN"
+echo "Usuario: cn=admin,$BASE_DN"
+echo "Contraseña: $ADMIN_PASSWORD"
