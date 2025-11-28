@@ -36,7 +36,7 @@ dnf install -y \
     httpd \
     php php-cli php-common \
     php-ldap php-mbstring php-xml php-json php-pdo php-opcache \
-    php-gd php-gmp \
+    php-gd php-gmp php-zip \
     wget tar
 
 
