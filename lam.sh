@@ -7,8 +7,11 @@ set -e
 
 # Detectar automáticamente la IP pública de la instancia AWS
 echo "[INFO] Detectando automáticamente la IP del servidor LDAP..."
-LDAP_SERVER=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-echo "[INFO] IP detectada: $LDAP_SERVER"
+LDAP_SERVER=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=ldap-server" \
+    --query "Reservations[0].Instances[0].PublicIpAddress" \
+    --output text)
+echo "[INFO] IP pública detectada: $LDAP_SERVER"
 
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 ADMIN_DN="cn=admin,$BASE_DN"
