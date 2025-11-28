@@ -11,7 +11,10 @@ ADMIN_PASSWORD="1234"
 dnf update -y
 
 # Instalar dependencias
-dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
+sudo dnf install \
+cyrus-sasl-devel make libtool autoconf libtool-ltdl-devel \
+openldap-clients openldap-servers openldap-devel \
+libdb-devel tar gcc perl perl-devel wget vim firewalld net-tools openssl -y
 
 # Configurar directorios
 mkdir -p /var/lib/ldap
