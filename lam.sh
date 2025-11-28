@@ -61,14 +61,6 @@ mkdir -p /var/lib/ldap-account-manager/tmp
 chown -R apache:apache /var/lib/ldap-account-manager
 chmod 700 /var/lib/ldap-account-manager/config
 
-
-# ========================
-#  COPIAR CONFIGURACIÓN BASE
-# ========================
-cp /var/www/html/lam/config/config.cfg_sample /var/lib/ldap-account-manager/config/config.cfg || true
-cp /var/www/html/lam/config/lam.conf_sample /var/lib/ldap-account-manager/config/lam.conf || true
-
-
 # ========================
 #  CONFIGURAR LAM
 # ========================
