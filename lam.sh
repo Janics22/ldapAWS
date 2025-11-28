@@ -5,12 +5,11 @@ set -e
 #   CONFIGURACIÓN INTEGRADA CON TUS SCRIPTS
 #############################################
 
-if [ -z "$1" ]; then
-    echo "Uso: $0 <IP_SERVIDOR_LDAP>"
-    exit 1
-fi
+# Detectar automáticamente la IP pública de la instancia AWS
+echo "[INFO] Detectando automáticamente la IP del servidor LDAP..."
+LDAP_SERVER=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+echo "[INFO] IP detectada: $LDAP_SERVER"
 
-LDAP_SERVER=$1
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 ADMIN_DN="cn=admin,$BASE_DN"
 ADMIN_PASS="1234"     # MISMO PASSWORD QUE server_ldap.sh
@@ -114,6 +113,6 @@ EOF
 #############################################
 
 echo "=== LAM INSTALADO CORRECTAMENTE ==="
-echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
+echo "URL: http://$LDAP_SERVER/lam"
 echo "Usuario LDAP: $ADMIN_DN"
 echo "Contraseña LDAP: $ADMIN_PASS"
