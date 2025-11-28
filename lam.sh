@@ -1,111 +1,144 @@
 #!/bin/bash
 set -e
 
-echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP EN AL2023 ==="
-
-# Variables
-BASE_DN="dc=amsa,dc=udl,dc=cat"
-ADMIN_DN="cn=admin,$BASE_DN"
-ADMIN_PASSWORD="1234"
-
-# Actualizar sistema
-dnf update -y
-
-# Instalar OpenLDAP y herramientas
-dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
-
-# Inicializar base de datos slapd
-if [ ! -f /var/lib/ldap/DB_CONFIG ]; then
-    cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
-    chown ldap:ldap /var/lib/ldap/DB_CONFIG
+# ========================
+#  CONFIG
+# ========================
+if [ -z "$1" ]; then
+    echo "Error: Falta la IP del servidor LDAP"
+    exit 1
 fi
 
-# Configurar contraseña de admin para cn=config
-ADMIN_HASH=$(slappasswd -s $ADMIN_PASSWORD)
+LDAP_SERVER=$1
+BASE_DN="dc=amsa,dc=udl,dc=cat"
+ADMIN_DN="cn=admin,$BASE_DN"
+LAM_VERSION="8.7"
 
-cat > /tmp/ldap-admin.ldif <<EOF
-dn: olcDatabase={2}mdb,cn=config
-changetype: modify
-replace: olcRootPW
-olcRootPW: $ADMIN_HASH
+echo "=== INICIANDO INSTALACIÓN DE LAM EN AMAZON LINUX 2023 ==="
+
+
+# ========================
+#  ESPERAR LDAP
+# ========================
+echo "Esperando servidor LDAP..."
+until nc -z $LDAP_SERVER 389; do
+    echo "LDAP no disponible, esperando 10s..."
+    sleep 10
+done
+
+
+# ========================
+#  SISTEMA + PHP + EXTENSIONES
+# ========================
+dnf update -y
+
+dnf install -y \
+    httpd \
+    php php-cli php-common \
+    php-ldap php-mbstring php-xml php-json php-pdo php-opcache \
+    php-gd php-gmp php-pecl-zip php-pecl-imagick \
+    wget tar
+
+
+# ========================
+#  DESCARGAR LAM 8.7
+# ========================
+cd /tmp
+wget https://github.com/LDAPAccountManager/lam/releases/download/${LAM_VERSION}/ldap-account-manager-${LAM_VERSION}.tar.bz2
+tar -xjf ldap-account-manager-${LAM_VERSION}.tar.bz2
+
+mv ldap-account-manager-${LAM_VERSION} /var/www/html/lam
+chown -R apache:apache /var/www/html/lam
+
+
+# ========================
+#  DIRECTORIOS DE LAM
+# ========================
+mkdir -p /var/lib/ldap-account-manager/config
+mkdir -p /var/lib/ldap-account-manager/sess
+mkdir -p /var/lib/ldap-account-manager/tmp
+
+chown -R apache:apache /var/lib/ldap-account-manager
+chmod 700 /var/lib/ldap-account-manager/config
+
+
+# ========================
+#  COPIAR CONFIGURACIÓN BASE
+# ========================
+cp /var/www/html/lam/config/config.cfg_sample /var/lib/ldap-account-manager/config/config.cfg || true
+cp /var/www/html/lam/config/lam.conf_sample /var/lib/ldap-account-manager/config/lam.conf || true
+
+
+# ========================
+#  CONFIGURAR LAM
+# ========================
+cat > /var/lib/ldap-account-manager/config/lam.conf << EOF
+ServerURL: ldap://$LDAP_SERVER:389
+Activate TLS: no
+
+LDAPSuffix: $BASE_DN
+
+admins: $ADMIN_DN
+loginMethod: list
+loginSearchSuffix: $BASE_DN
+
+types: suffix_user: ou=users,$BASE_DN
+types: suffix_group: ou=groups,$BASE_DN
+
+modules: posixAccount_minUID: 1000
+modules: posixAccount_maxUID: 30000
+
+modules: posixGroup_minGID: 10000
+modules: posixGroup_maxGID: 20000
 EOF
 
-# Iniciar slapd
-systemctl enable slapd
-systemctl start slapd
-sleep 5
+chown apache:apache /var/lib/ldap-account-manager/config/lam.conf
+chmod 600 /var/lib/ldap-account-manager/config/lam.conf
 
-# Aplicar contraseña admin
-ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/ldap-admin.ldif
 
-# Crear estructura base
-cat > /tmp/base.ldif <<EOF
-dn: $BASE_DN
-objectClass: top
-objectClass: dcObject
-objectClass: organization
-o: AMSA Organization
-dc: amsa
+# ========================
+#  CONFIGURAR APACHE
+# ========================
+cat > /etc/httpd/conf.d/lam.conf << EOF
+Alias /lam /var/www/html/lam
 
-dn: cn=admin,$BASE_DN
-objectClass: organizationalRole
-cn: admin
-description: LDAP Administrator
+<Directory /var/www/html/lam>
+    Options FollowSymLinks
+    AllowOverride All
+    Require all granted
 
-dn: ou=users,$BASE_DN
-objectClass: organizationalUnit
-ou: users
-
-dn: ou=groups,$BASE_DN
-objectClass: organizationalUnit
-ou: groups
+    <IfModule mod_php.c>
+        php_value session.save_path /var/lib/ldap-account-manager/sess
+        php_value include_path /var/www/html/lam:/var/www/html/lam/lib
+    </IfModule>
+</Directory>
 EOF
 
-ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PASSWORD" -f /tmp/base.ldif
+systemctl enable httpd
+systemctl start httpd
 
-# Crear usuarios y grupos de ejemplo
-cat > /tmp/users.ldif <<EOF
-# Grupos
-dn: cn=alumnes,ou=groups,$BASE_DN
-objectClass: posixGroup
-cn: alumnes
-gidNumber: 10000
 
-dn: cn=professors,ou=groups,$BASE_DN
-objectClass: posixGroup
-cn: professors
-gidNumber: 10001
-
-dn: cn=admins,ou=groups,$BASE_DN
-objectClass: posixGroup
-cn: admins
-gidNumber: 10002
-
-# Admin
-dn: uid=admin,ou=users,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Admin User
-sn: Admin
-uid: admin
-uidNumber: 1000
-gidNumber: 10002
-homeDirectory: /home/admin
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+# ========================
+#  PÁGINA DE INICIO
+# ========================
+cat > /var/www/html/index.html << EOF
+<!DOCTYPE html>
+<html>
+<head><title>LDAP Account Manager</title></head>
+<body>
+<h1>LDAP Account Manager</h1>
+<p><a href="/lam">Acceder a LAM</a></p>
+<p>Usuario: cn=admin,$BASE_DN</p>
+<p>Contraseña: 1234</p>
+</body>
+</html>
 EOF
 
-ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PASSWORD" -f /tmp/users.ldif
 
-# Configurar firewall
-dnf install -y firewalld
-systemctl enable firewalld
-systemctl start firewalld
-firewall-cmd --permanent --add-service=ldap
-firewall-cmd --permanent --add-service=ldaps
-firewall-cmd --reload
-
-echo "=== SERVIDOR LDAP INSTALADO ==="
-echo "Base DN: $BASE_DN"
-echo "Usuario admin: $ADMIN_DN"
-echo "Contraseña: $ADMIN_PASSWORD"
+# ========================
+#  INFO FINAL
+# ========================
+echo "=== LAM INSTALADO CORRECTAMENTE ==="
+echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
+echo "Usuario: $ADMIN_DN"
+echo "Contraseña: 1234"
