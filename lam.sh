@@ -25,7 +25,7 @@ sudo systemctl enable httpd --now
 echo "[+] Configurando LAM..."
 sudo mkdir -p "$LAM_CONF_DIR"
 
-cat <<EOF | sudo tee "$LAM_CONF_FILE" >/dev/null
+cat <<'EOF' | sudo tee "$LAM_CONF_FILE" >/dev/null
 # LAM configuración principal
 defaultProfile: default
 
@@ -38,7 +38,7 @@ treesuffix: ${BASE_DN}
 
 # Hash de contraseñas
 passwordDefaultHash: SSHA
-> EOF
+EOF
 
 echo "[+] Ajustando permisos..."
 sudo chown -R apache:apache "$LAM_CONF_DIR"
