@@ -64,55 +64,65 @@ chmod 700 /var/lib/ldap-account-manager/config
 # ========================
 #  CONFIGURAR LAM
 # ========================
-cat > /var/lib/ldap-account-manager/config/lam.conf << EOF
+
+# Configurar config.cfg primero
+cat > /var/lib/ldap-account-manager/config/config.cfg << 'EOF'
+password: {SSHA}4C6O8OuyVYk8YNjDSpF5gLZkbxI= u89Ej5wT
 ServerURL: ldap://$LDAP_SERVER:389
-Activate TLS: no
-
-LDAPSuffix: $BASE_DN
-
-admins: $ADMIN_DN
-loginMethod: list
-loginSearchSuffix: $BASE_DN
+Passwd: lam
+Admins: cn=admin,$BASE_DN
+treesuffix: $BASE_DN
 
 types: suffix_user: ou=users,$BASE_DN
 types: suffix_group: ou=groups,$BASE_DN
-
 modules: posixAccount_minUID: 1000
 modules: posixAccount_maxUID: 30000
-
 modules: posixGroup_minGID: 10000
 modules: posixGroup_maxGID: 20000
 EOF
 
-chown apache:apache /var/lib/ldap-account-manager/config/lam.conf
-chmod 600 /var/lib/ldap-account-manager/config/lam.conf
-
-cat > /var/lib/ldap-account-manager/config/config.cfg << EOF
-defaultProfile: default
-activeProfile: default
-logLevel: 3
-EOF
-
-chown apache:apache /var/lib/ldap-account-manager/config/config.cfg
-chmod 600 /var/lib/ldap-account-manager/config/config.cfg
-
+# Crear directorio de perfiles
 mkdir -p /var/lib/ldap-account-manager/config/profiles
 
+# Configurar perfil default.conf con hash de contraseña
 cat > /var/lib/ldap-account-manager/config/profiles/default.conf << EOF
-ServerURL: ldap://$LDAP_SERVER:389
-LDAPSuffix: $BASE_DN
-Admins: $ADMIN_DN
+# LAM configuration
 
+# server address (e.g. ldap://localhost:389 or ldaps://localhost:636)
+ServerURL: ldap://$LDAP_SERVER:389
+
+# list of users who are allowed to use LDAP Account Manager
+# names have to be separated by semicolons
+# e.g. admins: cn=admin,dc=yourdomain,dc=org;cn=root,dc=yourdomain,dc=org
+Admins: cn=admin,$BASE_DN
+
+# password to change these preferences via webfrontend (default: lam)
+Passwd: {SSHA}gVzc3vDbzU4TXMhtjlXaEKJGOvK3f82i
+
+# suffix of tree view
+treesuffix: $BASE_DN
+
+# default language (a line from config/language)
+defaultLanguage: es_ES.utf8:UTF-8:Spanish (España)
+
+# LDAP search limit
+searchLimit: 0
+
+# type settings
 types: suffix_user: ou=users,$BASE_DN
 types: suffix_group: ou=groups,$BASE_DN
 
-loginMethod: list
-loginSearchSuffix: $BASE_DN
+# module settings
+modules: posixAccount_minUID: 1000
+modules: posixAccount_maxUID: 30000
+modules: posixGroup_minGID: 10000
+modules: posixGroup_maxGID: 20000
 EOF
 
-chown apache:apache /var/lib/ldap-account-manager/config/profiles/default.conf
+# Permisos correctos
+chown -R apache:apache /var/lib/ldap-account-manager
+chmod 600 /var/lib/ldap-account-manager/config/config.cfg
 chmod 600 /var/lib/ldap-account-manager/config/profiles/default.conf
-
 
 # ========================
 #  CONFIGURAR APACHE
