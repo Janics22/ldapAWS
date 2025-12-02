@@ -110,6 +110,25 @@ systemctl enable httpd
 systemctl start httpd
 
 
+mkdir -p /var/lib/ldap-account-manager/config/profiles
+
+cat > /var/lib/ldap-account-manager/config/profiles/default.conf << EOF
+ServerURL: ldap://$LDAP_SERVER:389
+LDAPSuffix: $BASE_DN
+Admins: $ADMIN_DN
+
+types: suffix_user: ou=users,$BASE_DN
+types: suffix_group: ou=groups,$BASE_DN
+
+loginMethod: list
+loginSearchSuffix: $BASE_DN
+EOF
+
+chown apache:apache /var/lib/ldap-account-manager/config/profiles/default.conf
+chmod 600 /var/lib/ldap-account-manager/config/profiles/default.conf
+
+
+
 # ========================
 #  PÁGINA DE INICIO
 # ========================
