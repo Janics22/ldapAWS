@@ -55,79 +55,144 @@ chown -R apache:apache /var/www/html/lam
 #  DIRECTORIOS DE LAM
 # ========================
 mkdir -p /var/lib/ldap-account-manager/config
+mkdir -p /var/lib/ldap-account-manager/config/profiles
 mkdir -p /var/lib/ldap-account-manager/sess
 mkdir -p /var/lib/ldap-account-manager/tmp
 
 chown -R apache:apache /var/lib/ldap-account-manager
 chmod 700 /var/lib/ldap-account-manager/config
 
-# ========================
-#  CONFIGURAR LAM
-# ========================
 
-# Configurar config.cfg primero
+# ========================
+#  CONFIGURACIÓN PRINCIPAL config.cfg
+# ========================
 cat > /var/lib/ldap-account-manager/config/config.cfg << 'EOF'
-password: {SSHA}4C6O8OuyVYk8YNjDSpF5gLZkbxI= u89Ej5wT
-ServerURL: ldap://$LDAP_SERVER:389
-Passwd: lam
-Admins: cn=admin,$BASE_DN
-treesuffix: $BASE_DN
+# Password to add/delete/rename configuration profiles (default: lam)
+password: {SSHA}gVzc3vDbzU4TXMhtjlXaEKJGOvK3f82i
 
-types: suffix_user: ou=users,$BASE_DN
-types: suffix_group: ou=groups,$BASE_DN
-modules: posixAccount_minUID: 1000
-modules: posixAccount_maxUID: 30000
-modules: posixGroup_minGID: 10000
-modules: posixGroup_maxGID: 20000
+# Default profile
+default: default
+
+# Log level
+logLevel: 4
+
+# Log destination
+logDestination: SYSLOG
+
+# Session timeout (minutes)
+sessionTimeout: 30
 EOF
 
-# Crear directorio de perfiles
-mkdir -p /var/lib/ldap-account-manager/config/profiles
+chown apache:apache /var/lib/ldap-account-manager/config/config.cfg
+chmod 600 /var/lib/ldap-account-manager/config/config.cfg
 
-# Configurar perfil default.conf con hash de contraseña
+
+# ========================
+#  CONFIGURACIÓN DEL PERFIL default
+# ========================
 cat > /var/lib/ldap-account-manager/config/profiles/default.conf << EOF
-# LAM configuration
-
-# server address (e.g. ldap://localhost:389 or ldaps://localhost:636)
+# Server settings
 ServerURL: ldap://$LDAP_SERVER:389
-
-# list of users who are allowed to use LDAP Account Manager
-# names have to be separated by semicolons
-# e.g. admins: cn=admin,dc=yourdomain,dc=org;cn=root,dc=yourdomain,dc=org
-Admins: cn=admin,$BASE_DN
-
-# password to change these preferences via webfrontend (default: lam)
-Passwd: {SSHA}gVzc3vDbzU4TXMhtjlXaEKJGOvK3f82i
-
-# suffix of tree view
-treesuffix: $BASE_DN
-
-# default language (a line from config/language)
-defaultLanguage: es_ES.utf8:UTF-8:Spanish (España)
-
-# LDAP search limit
+useTLS: no
+followReferrals: false
+pagedResults: false
+referentialIntegrityOverlay: false
 searchLimit: 0
 
-# type settings
+# LDAP suffix
+defaultLanguage: en_GB.utf8:UTF-8:English (Great Britain)
+Passwd: {SSHA}gVzc3vDbzU4TXMhtjlXaEKJGOvK3f82i
+treesuffix: $BASE_DN
+
+# Access level
+accessLevel: 100
+
+# Login method
+loginMethod: search
+loginSearchSuffix: $BASE_DN
+loginSearchFilter: (uid=%USER%)
+loginSearchDN: 
+loginSearchPassword: 
+httpAuthentication: false
+
+# Admins
+Admins: $ADMIN_DN
+admins: $ADMIN_DN
+
+# Password policy
+pwdPolicyMinLength: 0
+pwdPolicyMinLowercase: 0
+pwdPolicyMinUppercase: 0
+pwdPolicyMinNumeric: 0
+pwdPolicyMinSymbolic: 0
+pwdPolicyMinClasses: 0
+
+# Type settings
 types: suffix_user: ou=users,$BASE_DN
 types: suffix_group: ou=groups,$BASE_DN
+types: suffix_smbDomain: $BASE_DN
 
-# module settings
+# Active account types
+activeTypes: user,group
+
+# Modules for user type
+modules: user_posixAccount
+modules: user_inetOrgPerson
+modules: user_shadowAccount
+
+# Modules for group type  
+modules: group_posixGroup
+
+# Module settings - posixAccount
 modules: posixAccount_minUID: 1000
 modules: posixAccount_maxUID: 30000
+modules: posixAccount_minMachine: 50000
+modules: posixAccount_maxMachine: 60000
+modules: posixAccount_pwdHash: SSHA
+modules: posixAccount_shells: /bin/bash
+
+# Module settings - posixGroup
 modules: posixGroup_minGID: 10000
 modules: posixGroup_maxGID: 20000
+modules: posixGroup_pwdHash: SSHA
+
+# Module settings - shadowAccount
+modules: shadowAccount_shadowMin: 0
+modules: shadowAccount_shadowMax: 999999
+modules: shadowAccount_shadowWarning: 7
+modules: shadowAccount_shadowInactive: -1
+modules: shadowAccount_shadowExpire: 
+modules: shadowAccount_shadowFlag: 0
+
+# Job settings
+jobsBindPassword: 
+jobsBindUser: 
+jobsDatabase: 
+jobToken: 
+
+# 2-factor authentication
+twoFactorAuthentication: none
+twoFactorAuthenticationURL: 
+twoFactorAuthenticationInsecure: false
+twoFactorAuthenticationLabel: 
+twoFactorAuthenticationOptional: false
+twoFactorAuthenticationCaption: 
+
+# Self service
+selfServiceProfile: default
+lamProMailSubject: 
+lamProMailText: 
+lamProMailIsHTML: false
 EOF
 
-# Permisos correctos
-chown -R apache:apache /var/lib/ldap-account-manager
-chmod 600 /var/lib/ldap-account-manager/config/config.cfg
+chown apache:apache /var/lib/ldap-account-manager/config/profiles/default.conf
 chmod 600 /var/lib/ldap-account-manager/config/profiles/default.conf
+
 
 # ========================
 #  CONFIGURAR APACHE
 # ========================
-cat > /etc/httpd/conf.d/lam.conf << EOF
+cat > /etc/httpd/conf.d/lam.conf << 'EOF'
 Alias /lam /var/www/html/lam
 
 <Directory /var/www/html/lam>
@@ -142,8 +207,13 @@ Alias /lam /var/www/html/lam
 </Directory>
 EOF
 
+# Configurar permisos SELinux si está activo
+if command -v setenforce &> /dev/null; then
+    setenforce 0 || true
+fi
+
 systemctl enable httpd
-systemctl start httpd
+systemctl restart httpd
 
 
 # ========================
@@ -152,12 +222,31 @@ systemctl start httpd
 cat > /var/www/html/index.html << EOF
 <!DOCTYPE html>
 <html>
-<head><title>LDAP Account Manager</title></head>
+<head>
+    <title>LDAP Account Manager</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; }
+        .info { background: #f0f0f0; padding: 20px; border-radius: 5px; }
+        h1 { color: #333; }
+        code { background: #e0e0e0; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
 <body>
-<h1>LDAP Account Manager</h1>
-<p><a href="/lam">Acceder a LAM</a></p>
-<p>Usuario: cn=admin,$BASE_DN</p>
-<p>Contraseña: 1234</p>
+    <h1>LDAP Account Manager - Sistema Configurado</h1>
+    <div class="info">
+        <h2>Acceso a LAM</h2>
+        <p><strong>URL:</strong> <a href="/lam">/lam</a></p>
+        <p><strong>Usuario LDAP:</strong> <code>cn=admin,$BASE_DN</code></p>
+        <p><strong>Contraseña LDAP:</strong> <code>1234</code></p>
+        <hr>
+        <p><strong>Contraseña maestra LAM:</strong> <code>lam</code> (solo para configuración avanzada)</p>
+        <hr>
+        <h3>Usuarios disponibles:</h3>
+        <ul>
+            <li>alumne1, alumne2, alumne3, alumne4, alumne5, alumne6 (contraseña: 1234)</li>
+            <li>professor1, professor2 (contraseña: 1234)</li>
+        </ul>
+    </div>
 </body>
 </html>
 EOF
@@ -166,7 +255,15 @@ EOF
 # ========================
 #  INFO FINAL
 # ========================
-echo "=== LAM INSTALADO CORRECTAMENTE ==="
-echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/lam"
-echo "Usuario: $ADMIN_DN"
-echo "Contraseña: 1234"
+PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+
+echo ""
+echo "=========================================="
+echo "   LAM INSTALADO Y CONFIGURADO"
+echo "=========================================="
+echo "URL: http://$PUBLIC_IP/lam"
+echo "Usuario LDAP: $ADMIN_DN"
+echo "Contraseña LDAP: 1234"
+echo ""
+echo "Contraseña maestra LAM: lam"
+echo "=========================================="
