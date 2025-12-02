@@ -87,6 +87,15 @@ EOF
 chown apache:apache /var/lib/ldap-account-manager/config/lam.conf
 chmod 600 /var/lib/ldap-account-manager/config/lam.conf
 
+cat > /var/lib/ldap-account-manager/config/config.cfg << EOF
+defaultProfile: default
+activeProfile: default
+logLevel: 3
+EOF
+
+chown apache:apache /var/lib/ldap-account-manager/config/config.cfg
+chmod 600 /var/lib/ldap-account-manager/config/config.cfg
+
 mkdir -p /var/lib/ldap-account-manager/config/profiles
 
 cat > /var/lib/ldap-account-manager/config/profiles/default.conf << EOF
