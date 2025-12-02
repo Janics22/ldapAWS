@@ -171,8 +171,9 @@ Outputs:
     Value: !Sub |
       LAM: http://${LAMServer.PublicIp}/lam
       Usuario: cn=admin,dc=amsa,dc=udl,dc=cat
-      Password: lam
+      Password: 1234
 
   SecurityGroupId:
     Value: !GetAtt LDAPSecurityGroup.GroupId
+
 
