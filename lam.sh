@@ -12,7 +12,6 @@ fi
 LDAP_SERVER=$1
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 ADMIN_DN="cn=admin,$BASE_DN"
-LAM_VERSION="8.7"
 
 echo "=== INICIANDO INSTALACIÓN DE LAM EN AMAZON LINUX 2023 ==="
 
@@ -42,7 +41,7 @@ sudo systemctl enable --now httpd
 sudo wget https://github.com/LDAPAccountManager/lam/releases/download/9.0.RC1/ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm
 sudo dnf install -y ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm
 
-mv ldap-account-manager-${LAM_VERSION} /var/www/html/lam
+mv ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm /var/www/html/lam
 chown -R apache:apache /var/www/html/lam
 
 
