@@ -32,20 +32,15 @@ done
 # ========================
 dnf update -y
 
-dnf install -y \
-    httpd \
-    php php-cli php-common \
-    php-ldap php-mbstring php-xml php-json php-pdo php-opcache \
-    php-gd php-gmp php-zip \
-    wget tar
+sudo dnf install -y httpd php php-ldap php-mbstring php-gd php-gmp php-zip
+sudo systemctl enable --now httpd
 
 
 # ========================
-#  DESCARGAR LAM 8.7
+#  DESCARGAR LAM 9.0
 # ========================
-cd /tmp
-wget https://github.com/LDAPAccountManager/lam/releases/download/${LAM_VERSION}/ldap-account-manager-${LAM_VERSION}.tar.bz2
-tar -xjf ldap-account-manager-${LAM_VERSION}.tar.bz2
+sudo wget https://github.com/LDAPAccountManager/lam/releases/download/9.0.RC1/ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm
+sudo dnf install -y ldap-account-manager-9.0.RC1-0.fedora.1.noarch.rpm
 
 mv ldap-account-manager-${LAM_VERSION} /var/www/html/lam
 chown -R apache:apache /var/www/html/lam
@@ -177,7 +172,6 @@ if command -v setenforce &> /dev/null; then
     setenforce 0 || true
 fi
 
-systemctl enable httpd
 systemctl restart httpd
 
 
