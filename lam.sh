@@ -51,41 +51,6 @@ mv ldap-account-manager-${LAM_VERSION} /var/www/html/lam
 chown -R apache:apache /var/www/html/lam
 
 
-# ========================
-#  DIRECTORIOS DE LAM
-# ========================
-mkdir -p /var/lib/ldap-account-manager/config
-mkdir -p /var/lib/ldap-account-manager/config/profiles
-mkdir -p /var/lib/ldap-account-manager/sess
-mkdir -p /var/lib/ldap-account-manager/tmp
-
-chown -R apache:apache /var/lib/ldap-account-manager
-chmod 700 /var/lib/ldap-account-manager/config
-
-
-# ========================
-#  CONFIGURACIÓN PRINCIPAL config.cfg
-# ========================
-cat > /var/lib/ldap-account-manager/config/config.cfg << 'EOF'
-# Password to add/delete/rename configuration profiles (default: lam)
-password: {SSHA}gVzc3vDbzU4TXMhtjlXaEKJGOvK3f82i
-
-# Default profile
-default: default
-
-# Log level
-logLevel: 4
-
-# Log destination
-logDestination: SYSLOG
-
-# Session timeout (minutes)
-sessionTimeout: 30
-EOF
-
-chown apache:apache /var/lib/ldap-account-manager/config/config.cfg
-chmod 600 /var/lib/ldap-account-manager/config/config.cfg
-
 
 # ========================
 #  CONFIGURACIÓN DEL PERFIL default
