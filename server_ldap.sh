@@ -1,210 +1,226 @@
 #!/bin/bash
-
-#############################
-# SERVER LDAP INSTALL SCRIPT
-# Con hostname dinámico (AWS-friendly)
-# Con usuarios iniciales: 6 alumnos y 2 profesores
-#############################
-
 set -e
 
+echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP ==="
+
 # Variables
-PATH_PKI="/etc/openldap/certs"
-OPENLDAP_VERSION="2.6.7"
-country="US"
-state="California"
-locality="San Francisco"
-organization="ExampleCorp"
-organizationalunit="IT"
-email="admin@example.com"
-BASEDN="dc=example,dc=com"
+BASE_DN="dc=amsa,dc=udl,dc=cat"
+ADMIN_PASSWORD="1234"
+CERT_DIR="/etc/openldap/certs"
+HOSTNAME=$(hostname -f)
 
-#############################
-# Obtener hostname dinámico
-#############################
-FQDN=$(hostname -f 2>/dev/null || hostname)
-echo "➡ Hostname detectado: $FQDN"
+# Actualizar sistema
+dnf update -y
 
-#############################
 # Instalar dependencias
-#############################
-dnf install -y gcc make cyrus-sasl-devel openssl-devel libtool-ltdl openssl wget tar \
-    autoconf libtool libdb-devel libdb-utils libuuid-devel libevent-devel
+dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
 
-#############################
-# Descargar y compilar OpenLDAP
-#############################
-cd /usr/local/src
-wget https://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-${OPENLDAP_VERSION}.tgz
-tar -xvf openldap-${OPENLDAP_VERSION}.tgz
-cd openldap-${OPENLDAP_VERSION}
+# Configurar directorios
+mkdir -p /var/lib/ldap /etc/openldap/slapd.d
+cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+chown -R ldap:ldap /var/lib/ldap /etc/openldap/slapd.d
 
-./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc \
-    --enable-slapd \
-    --with-tls=openssl \
-    --enable-dynamic \
-    --enable-overlays \
-    --enable-modules \
-    --enable-mdb=yes
+# Iniciar y habilitar slapd
+systemctl enable slapd
+systemctl start slapd
 
-make depend
-make -j"$(nproc)"
-make install
+# Crear estructura base
+cat > /tmp/base.ldif <<EOF
+dn: $BASE_DN
+objectClass: dcObject
+objectClass: organization
+o: AMSA Organization
+dc: amsa
 
-#############################
-# Crear directorios y permisos
-#############################
-mkdir -p /var/lib/ldap
-mkdir -p /etc/openldap/slapd.d
-mkdir -p "$PATH_PKI"
+dn: cn=admin,$BASE_DN
+objectClass: organizationalRole
+cn: admin
+description: LDAP Administrator
 
-chown -R ldap:ldap /var/lib/ldap
-chown -R ldap:ldap /etc/openldap/slapd.d
-chmod 700 "$PATH_PKI"
-
-#############################
-# Crear certificado TLS dinámico
-#############################
-echo "➡ Generando certificado TLS para CN=$FQDN"
-
-openssl req -days 500 -newkey rsa:4096 \
-    -keyout "$PATH_PKI/ldapkey.pem" -nodes \
-    -sha256 -x509 -out "$PATH_PKI/ldapcert.pem" \
-    -subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$FQDN/emailAddress=$email"
-
-chown ldap:ldap "$PATH_PKI"/*.pem
-chmod 600 "$PATH_PKI"/*.pem
-
-#############################
-# Inicializar base de datos
-#############################
-slapadd -n0 -F /etc/openldap/slapd.d <<EOF
-dn: $BASEDN
-objectClass: top
-objectClass: domain
-dc: example
-EOF
-
-#############################
-# Configurar TLS en cn=config
-#############################
-cat << EOF | ldapmodify -Y EXTERNAL -H ldapi:///
-dn: cn=config
-changetype: modify
-replace: olcTLSCertificateFile
-olcTLSCertificateFile: $PATH_PKI/ldapcert.pem
--
-replace: olcTLSCertificateKeyFile
-olcTLSCertificateKeyFile: $PATH_PKI/ldapkey.pem
--
-replace: olcTLSCACertificateFile
-olcTLSCACertificateFile: $PATH_PKI/ldapcert.pem
-EOF
-
-#############################
-# Configurar Systemd
-#############################
-cat <<EOF > /usr/lib/systemd/system/slapd.service
-[Unit]
-Description=OpenLDAP Server Daemon
-After=network.target
-
-[Service]
-Type=forking
-User=ldap
-Group=ldap
-ExecStartPre=/usr/libexec/openldap/check-config.sh
-ExecStart=/usr/sbin/slapd -u ldap -h "ldap:/// ldaps:/// ldapi:///"
-ExecReload=/bin/kill -HUP \$MAINPID
-PIDFile=/var/run/openldap/slapd.pid
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable --now slapd
-
-#############################
-# Crear usuarios: 6 alumnos y 2 profesores
-#############################
-cat <<EOF > /tmp/users.ldif
-dn: ou=Alumnos,$BASEDN
+dn: ou=users,$BASE_DN
 objectClass: organizationalUnit
-ou: Alumnos
+ou: users
 
-dn: ou=Profesores,$BASEDN
+dn: ou=groups,$BASE_DN
 objectClass: organizationalUnit
-ou: Profesores
+ou: groups
+EOF
 
-# Alumnos
-dn: uid=alumno1,ou=Alumnos,$BASEDN
-objectClass: inetOrgPerson
-cn: Alumno Uno
-sn: Uno
-uid: alumno1
-userPassword: alumno1pass
+ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/base.ldif
 
-dn: uid=alumno2,ou=Alumnos,$BASEDN
-objectClass: inetOrgPerson
-cn: Alumno Dos
-sn: Dos
-uid: alumno2
-userPassword: alumno2pass
+# Crear grupos y usuarios
+cat > /tmp/users.ldif <<EOF
+# Grupos
+dn: cn=alumnes,ou=groups,$BASE_DN
+objectClass: posixGroup
+cn: alumnes
+gidNumber: 10000
 
-dn: uid=alumno3,ou=Alumnos,$BASEDN
-objectClass: inetOrgPerson
-cn: Alumno Tres
-sn: Tres
-uid: alumno3
-userPassword: alumno3pass
+dn: cn=professors,ou=groups,$BASE_DN
+objectClass: posixGroup
+cn: professors
+gidNumber: 10001
 
-dn: uid=alumno4,ou=Alumnos,$BASEDN
-objectClass: inetOrgPerson
-cn: Alumno Cuatro
-sn: Cuatro
-uid: alumno4
-userPassword: alumno4pass
+dn: cn=admins,ou=groups,$BASE_DN
+objectClass: posixGroup
+cn: admins
+gidNumber: 10002
 
-dn: uid=alumno5,ou=Alumnos,$BASEDN
+# Admin
+dn: uid=admin,ou=users,$BASE_DN
 objectClass: inetOrgPerson
-cn: Alumno Cinco
-sn: Cinco
-uid: alumno5
-userPassword: alumno5pass
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Admin User
+sn: Admin
+uid: admin
+uidNumber: 1000
+gidNumber: 10002
+homeDirectory: /home/admin
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-dn: uid=alumno6,ou=Alumnos,$BASEDN
+# Alumnos (6 usuarios)
+dn: uid=alumne1,ou=users,$BASE_DN
 objectClass: inetOrgPerson
-cn: Alumno Seis
-sn: Seis
-uid: alumno6
-userPassword: alumno6pass
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne One
+sn: One
+uid: alumne1
+uidNumber: 1001
+gidNumber: 10000
+homeDirectory: /home/alumne1
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-# Profesores
-dn: uid=profesor1,ou=Profesores,$BASEDN
+dn: uid=alumne2,ou=users,$BASE_DN
 objectClass: inetOrgPerson
-cn: Profesor Uno
-sn: Uno
-uid: profesor1
-userPassword: profesor1pass
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Two
+sn: Two
+uid: alumne2
+uidNumber: 1002
+gidNumber: 10000
+homeDirectory: /home/alumne2
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 
-dn: uid=profesor2,ou=Profesores,$BASEDN
+dn: uid=alumne3,ou=users,$BASE_DN
 objectClass: inetOrgPerson
-cn: Profesor Dos
-sn: Dos
-uid: profesor2
-userPassword: profesor2pass
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Three
+sn: Three
+uid: alumne3
+uidNumber: 1003
+gidNumber: 10000
+homeDirectory: /home/alumne3
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+
+dn: uid=alumne4,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Four
+sn: Four
+uid: alumne4
+uidNumber: 1004
+gidNumber: 10000
+homeDirectory: /home/alumne4
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+
+dn: uid=alumne5,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Five
+sn: Five
+uid: alumne5
+uidNumber: 1005
+gidNumber: 10000
+homeDirectory: /home/alumne5
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+
+dn: uid=alumne6,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Alumne Six
+sn: Six
+uid: alumne6
+uidNumber: 1006
+gidNumber: 10000
+homeDirectory: /home/alumne6
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+
+# Professors (2 usuarios)
+dn: uid=professor1,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Professor One
+sn: Professor
+uid: professor1
+uidNumber: 2001
+gidNumber: 10001
+homeDirectory: /home/professor1
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+
+dn: uid=professor2,ou=users,$BASE_DN
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Professor Two
+sn: Professor
+uid: professor2
+uidNumber: 2002
+gidNumber: 10001
+homeDirectory: /home/professor2
+userPassword: $(slappasswd -s $ADMIN_PASSWORD)
 EOF
 
 ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/users.ldif
 
-#############################
-# Salida final
-#############################
-echo "Instalación completada"
-echo "OpenLDAP compilado e iniciado"
-echo "Certificado TLS generado para: $FQDN"
-echo "LDAPS escuchando en el puerto 636"
-echo "6 alumnos y 2 profesores creados en LDAP"
+# Configurar TLS
+mkdir -p $CERT_DIR
+chmod 700 $CERT_DIR
+chown ldap:ldap $CERT_DIR
+
+openssl req -new -x509 -nodes -days 365 \
+    -out $CERT_DIR/cacerts.pem \
+    -keyout $CERT_DIR/ldapkey.pem \
+    -subj "/C=ES/ST=Catalonia/L=Barcelona/O=AMSA/OU=IT/CN=$HOSTNAME/emailAddress=admin@udl.cat"
+
+chown ldap:ldap $CERT_DIR/*.pem
+chmod 600 $CERT_DIR/*.pem
+
+# Crear LDIF para TLS
+cat > /tmp/slapd_tls.ldif <<EOF
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateFile
+olcTLSCertificateFile: $CERT_DIR/cacerts.pem
+-
+replace: olcTLSCertificateKeyFile
+olcTLSCertificateKeyFile: $CERT_DIR/ldapkey.pem
+-
+replace: olcTLSCACertificateFile
+olcTLSCACertificateFile: $CERT_DIR/cacerts.pem
+EOF
+
+ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/slapd_tls.ldif
+
+# Reiniciar slapd para aplicar TLS
+systemctl restart slapd
+
+# Configurar firewall
+systemctl enable firewalld
+systemctl start firewalld
+firewall-cmd --permanent --add-service=ldap
+firewall-cmd --permanent --add-service=ldaps
+firewall-cmd --reload
+
+echo "=== SERVIDOR LDAP INSTALADO Y CONFIGURADO ==="
+echo "Base DN: $BASE_DN"
+echo "Usuario admin: cn=admin,$BASE_DN"
+echo "Contraseña: $ADMIN_PASSWORD"
+echo "LDAPS activo en puerto 636"
