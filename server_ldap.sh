@@ -1,208 +1,210 @@
 #!/bin/bash
+
+#############################
+# SERVER LDAP INSTALL SCRIPT
+# Con hostname dinámico (AWS-friendly)
+# Con usuarios iniciales: 6 alumnos y 2 profesores
+#############################
+
 set -e
 
-echo "=== INICIANDO INSTALACIÓN SERVIDOR LDAP ==="
-
 # Variables
-BASE_DN="dc=amsa,dc=udl,dc=cat"
-ADMIN_PASSWORD="1234"
-FQDN=$(hostname -f)   # <-- Hostname dinámico de AWS
-CERT_DIR="/etc/openldap/certs"
+PATH_PKI="/etc/openldap/certs"
+OPENLDAP_VERSION="2.6.7"
+country="US"
+state="California"
+locality="San Francisco"
+organization="ExampleCorp"
+organizationalunit="IT"
+email="admin@example.com"
+BASEDN="dc=example,dc=com"
 
-echo "[INFO] Hostname detectado: $FQDN"
+#############################
+# Obtener hostname dinámico
+#############################
+FQDN=$(hostname -f 2>/dev/null || hostname)
+echo "➡ Hostname detectado: $FQDN"
 
-# Actualizar sistema
-dnf update -y
-
+#############################
 # Instalar dependencias
-dnf install -y openldap-servers openldap-clients openssl net-tools firewalld
+#############################
+dnf install -y gcc make cyrus-sasl-devel openssl-devel libtool-ltdl openssl wget tar \
+    autoconf libtool libdb-devel libdb-utils libuuid-devel libevent-devel
 
-# Crear directorios
+#############################
+# Descargar y compilar OpenLDAP
+#############################
+cd /usr/local/src
+wget https://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-${OPENLDAP_VERSION}.tgz
+tar -xvf openldap-${OPENLDAP_VERSION}.tgz
+cd openldap-${OPENLDAP_VERSION}
+
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-slapd \
+    --with-tls=openssl \
+    --enable-dynamic \
+    --enable-overlays \
+    --enable-modules \
+    --enable-mdb=yes
+
+make depend
+make -j"$(nproc)"
+make install
+
+#############################
+# Crear directorios y permisos
+#############################
 mkdir -p /var/lib/ldap
 mkdir -p /etc/openldap/slapd.d
-cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
-chown ldap:ldap /var/lib/ldap/*
+mkdir -p "$PATH_PKI"
 
-##############################################
-# GENERAR CERTIFICADOS TLS AUTOMÁTICOS
-##############################################
-echo "[INFO] Generando certificados TLS..."
+chown -R ldap:ldap /var/lib/ldap
+chown -R ldap:ldap /etc/openldap/slapd.d
+chmod 700 "$PATH_PKI"
 
-mkdir -p $CERT_DIR
-chmod 700 $CERT_DIR
+#############################
+# Crear certificado TLS dinámico
+#############################
+echo "➡ Generando certificado TLS para CN=$FQDN"
 
-openssl req -x509 -nodes -days 365 \
-  -subj "/CN=$FQDN" \
-  -newkey rsa:2048 \
-  -keyout $CERT_DIR/ldap.key \
-  -out $CERT_DIR/ldap.crt
+openssl req -days 500 -newkey rsa:4096 \
+    -keyout "$PATH_PKI/ldapkey.pem" -nodes \
+    -sha256 -x509 -out "$PATH_PKI/ldapcert.pem" \
+    -subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$FQDN/emailAddress=$email"
 
-chown ldap:ldap $CERT_DIR/*
-chmod 600 $CERT_DIR/*
+chown ldap:ldap "$PATH_PKI"/*.pem
+chmod 600 "$PATH_PKI"/*.pem
 
-##############################################
-# CONFIGURAR SLAPD.CONF (añadir TLS)
-##############################################
-echo "[INFO] Configurando slapd.conf..."
-
-cat > /etc/openldap/slapd.conf << EOF
-include /etc/openldap/schema/core.schema
-include /etc/openldap/schema/cosine.schema
-include /etc/openldap/schema/nis.schema
-include /etc/openldap/schema/inetorgperson.schema
-
-pidfile /var/run/openldap/slapd.pid
-argsfile /var/run/openldap/slapd.args
-
-TLSCACertificateFile $CERT_DIR/ldap.crt
-TLSCertificateFile $CERT_DIR/ldap.crt
-TLSCertificateKeyFile $CERT_DIR/ldap.key
-
-modulepath /usr/lib64/openldap
-moduleload back_mdb.la
-
-database mdb
-suffix "$BASE_DN"
-rootdn "cn=admin,$BASE_DN"
-rootpw $(slappasswd -s $ADMIN_PASSWORD)
-directory /var/lib/ldap
-
-index objectClass eq,pres
-index ou,cn,mail,surname,givenname eq,pres,sub
-index uidNumber,gidNumber,loginShell eq,pres
-index uid,memberUid eq,pres,sub
-index nisMapName,nisMapEntry eq,pres,sub
+#############################
+# Inicializar base de datos
+#############################
+slapadd -n0 -F /etc/openldap/slapd.d <<EOF
+dn: $BASEDN
+objectClass: top
+objectClass: domain
+dc: example
 EOF
 
-##############################################
-# CREAR ESTRUCTURA BASE
-##############################################
-cat > /tmp/base.ldif << EOF
-dn: $BASE_DN
-objectClass: dcObject
-objectClass: organization
-o: AMSA Organization
-dc: amsa
+#############################
+# Configurar TLS en cn=config
+#############################
+cat << EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateFile
+olcTLSCertificateFile: $PATH_PKI/ldapcert.pem
+-
+replace: olcTLSCertificateKeyFile
+olcTLSCertificateKeyFile: $PATH_PKI/ldapkey.pem
+-
+replace: olcTLSCACertificateFile
+olcTLSCACertificateFile: $PATH_PKI/ldapcert.pem
+EOF
 
-dn: cn=admin,$BASE_DN
-objectClass: organizationalRole
-cn: admin
-description: LDAP Administrator
+#############################
+# Configurar Systemd
+#############################
+cat <<EOF > /usr/lib/systemd/system/slapd.service
+[Unit]
+Description=OpenLDAP Server Daemon
+After=network.target
 
-dn: ou=users,$BASE_DN
+[Service]
+Type=forking
+User=ldap
+Group=ldap
+ExecStartPre=/usr/libexec/openldap/check-config.sh
+ExecStart=/usr/sbin/slapd -u ldap -h "ldap:/// ldaps:/// ldapi:///"
+ExecReload=/bin/kill -HUP \$MAINPID
+PIDFile=/var/run/openldap/slapd.pid
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now slapd
+
+#############################
+# Crear usuarios: 6 alumnos y 2 profesores
+#############################
+cat <<EOF > /tmp/users.ldif
+dn: ou=Alumnos,$BASEDN
 objectClass: organizationalUnit
-ou: users
+ou: Alumnos
 
-dn: ou=groups,$BASE_DN
+dn: ou=Profesores,$BASEDN
 objectClass: organizationalUnit
-ou: groups
-EOF
+ou: Profesores
 
-##############################################
-# USUARIOS
-##############################################
-cat > /tmp/users.ldif << EOF
-# Grupos
-dn: cn=alumnes,ou=groups,$BASE_DN
-objectClass: posixGroup
-cn: alumnes
-gidNumber: 10000
-
-dn: cn=professors,ou=groups,$BASE_DN
-objectClass: posixGroup
-cn: professors
-gidNumber: 10001
-
-dn: cn=admins,ou=groups,$BASE_DN
-objectClass: posixGroup
-cn: admins
-gidNumber: 10002
-
-# Admin
-dn: uid=admin,ou=users,$BASE_DN
+# Alumnos
+dn: uid=alumno1,ou=Alumnos,$BASEDN
 objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Admin User
-sn: Admin
-uid: admin
-uidNumber: 1000
-gidNumber: 10002
-homeDirectory: /home/admin
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+cn: Alumno Uno
+sn: Uno
+uid: alumno1
+userPassword: alumno1pass
 
-# Alumnos (6 usuarios)
-EOF
-
-# Añadir los usuarios alumnos (loop)
-for i in {1..6}; do
-cat >> /tmp/users.ldif << EOF
-dn: uid=alumne$i,ou=users,$BASE_DN
+dn: uid=alumno2,ou=Alumnos,$BASEDN
 objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Alumne $i
-sn: Number$i
-uid: alumne$i
-uidNumber: $((1000 + $i))
-gidNumber: 10000
-homeDirectory: /home/alumne$i
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+cn: Alumno Dos
+sn: Dos
+uid: alumno2
+userPassword: alumno2pass
 
-EOF
-done
+dn: uid=alumno3,ou=Alumnos,$BASEDN
+objectClass: inetOrgPerson
+cn: Alumno Tres
+sn: Tres
+uid: alumno3
+userPassword: alumno3pass
+
+dn: uid=alumno4,ou=Alumnos,$BASEDN
+objectClass: inetOrgPerson
+cn: Alumno Cuatro
+sn: Cuatro
+uid: alumno4
+userPassword: alumno4pass
+
+dn: uid=alumno5,ou=Alumnos,$BASEDN
+objectClass: inetOrgPerson
+cn: Alumno Cinco
+sn: Cinco
+uid: alumno5
+userPassword: alumno5pass
+
+dn: uid=alumno6,ou=Alumnos,$BASEDN
+objectClass: inetOrgPerson
+cn: Alumno Seis
+sn: Seis
+uid: alumno6
+userPassword: alumno6pass
 
 # Profesores
-cat >> /tmp/users.ldif << EOF
-dn: uid=professor1,ou=users,$BASE_DN
+dn: uid=profesor1,ou=Profesores,$BASEDN
 objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Professor One
-sn: Professor
-uid: professor1
-uidNumber: 2001
-gidNumber: 10001
-homeDirectory: /home/professor1
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+cn: Profesor Uno
+sn: Uno
+uid: profesor1
+userPassword: profesor1pass
 
-dn: uid=professor2,ou=users,$BASE_DN
+dn: uid=profesor2,ou=Profesores,$BASEDN
 objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Professor Two
-sn: Professor
-uid: professor2
-uidNumber: 2002
-gidNumber: 10001
-homeDirectory: /home/professor2
-userPassword: $(slappasswd -s $ADMIN_PASSWORD)
+cn: Profesor Dos
+sn: Dos
+uid: profesor2
+userPassword: profesor2pass
 EOF
 
-##############################################
-# INICIAR Y POBLAR LDAP
-##############################################
-systemctl enable slapd
-systemctl restart slapd
-
-sleep 5
-
-ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/base.ldif
 ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/users.ldif
 
-##############################################
-# FIREWALL
-##############################################
-systemctl enable firewalld
-systemctl start firewalld
-firewall-cmd --permanent --add-service=ldap
-firewall-cmd --permanent --add-service=ldaps
-firewall-cmd --reload
-
-echo "======================================================"
-echo "=== SERVIDOR LDAP INSTALADO CON TLS AUTOMÁTICO ==="
-echo "Base DN: $BASE_DN"
-echo "Admin: cn=admin,$BASE_DN"
-echo "Contraseña: $ADMIN_PASSWORD"
-echo "Hostname TLS: $FQDN"
-echo "======================================================"
+#############################
+# Salida final
+#############################
+echo "✔ Instalación completada"
+echo "✔ OpenLDAP compilado e iniciado"
+echo "✔ Certificado TLS generado para: $FQDN"
+echo "✔ LDAPS escuchando en el puerto 636"
+echo "✔ 6 alumnos y 2 profesores creados en LDAP"
