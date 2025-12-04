@@ -203,8 +203,8 @@ ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/users.ldif
 #############################
 # Salida final
 #############################
-echo "✔ Instalación completada"
-echo "✔ OpenLDAP compilado e iniciado"
-echo "✔ Certificado TLS generado para: $FQDN"
-echo "✔ LDAPS escuchando en el puerto 636"
-echo "✔ 6 alumnos y 2 profesores creados en LDAP"
+echo "Instalación completada"
+echo "OpenLDAP compilado e iniciado"
+echo "Certificado TLS generado para: $FQDN"
+echo "LDAPS escuchando en el puerto 636"
+echo "6 alumnos y 2 profesores creados en LDAP"
