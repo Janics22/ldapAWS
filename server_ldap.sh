@@ -18,11 +18,6 @@ echo "... Base: $BASE"
 echo "... Path: $PATH_PKI"
 echo "... DC: $DC"
 
-if [ "$response" != "y" ]; then
-    echo "Exiting..."
-    exit 1
-fi
-
 # Preparing the hostname
 echo "... Setting the hostname to $HOSTNAME"
 hostnamectl set-hostname $HOSTNAME --static
