@@ -288,5 +288,7 @@ add: olcTLSCertificateFile
 olcTLSCertificateFile: "$PATH_PKI/ldapcert.pem"
 EOL
 
-
 ldapadd -Y EXTERNAL -H ldapi:/// -f add-tls.ldif
+
+
+echo "=== SERVER LDAP CONFIGURADO ==="
