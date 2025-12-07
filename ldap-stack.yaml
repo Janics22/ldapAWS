@@ -111,29 +111,6 @@ Resources:
           echo "[INFO] Cliente LDAP configurado"
 
   # =============================
-  # ZONA PRIVADA DE DNS PARA LDAP
-  # =============================
-  LDAPPrivateHostedZone:
-    Type: 'AWS::Route53::HostedZone'
-    Properties:
-      Name: ldap.local
-      VPCs:
-        - VPCId: !Ref "AWS::StackName" # Aquí se reemplaza con la VPC donde están tus instancias
-          VPCRegion: !Ref "AWS::Region"
-      HostedZoneConfig:
-        Comment: "Zona privada para resolver ldap-server dentro de la VPC"
-
-  LDAPServerDNSRecord:
-    Type: 'AWS::Route53::RecordSet'
-    Properties:
-      HostedZoneId: !Ref LDAPPrivateHostedZone
-      Name: ldap-server.ldap.local
-      Type: A
-      TTL: '300'
-      ResourceRecords:
-        - !GetAtt LDAPServer.PrivateIp
-
-  # =============================
   # SERVIDOR LAM
   # =============================
   LAMServer:
@@ -176,8 +153,6 @@ Resources:
 
           echo "[INFO] LAM instalado"
 
-  
-
 Outputs:
 
   LDAPServerIP:
@@ -200,6 +175,4 @@ Outputs:
 
   SecurityGroupId:
     Value: !GetAtt LDAPSecurityGroup.GroupId
-
-
 
