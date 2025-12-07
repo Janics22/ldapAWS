@@ -6,7 +6,10 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-LDAP_SERVER=$1
+LDAP_SERVER=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=ldap-server" \
+    --query "Reservations[*].Instances[*].PrivateIpAddress" \
+    --output text)
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 
 echo "=== CONFIGURANDO CLIENTE LDAP ==="
