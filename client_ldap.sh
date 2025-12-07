@@ -6,7 +6,7 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-LDAP_SERVER="ldap-server.ldap.local"
+LDAP_SERVER=$1
 BASE_DN="dc=amsa,dc=udl,dc=cat"
 
 echo "=== CONFIGURANDO CLIENTE LDAP ==="
