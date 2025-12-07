@@ -3,7 +3,7 @@
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # Variables
-HOSTNAME="ec2-34-207-89-93.compute-1.amazonaws.com"
+HOSTNAME="$(hostname -f)"
 VER="2.6.3"
 BASE="dc=amsa,dc=udl,dc=cat"
 PATH_PKI="/etc/pki/tls"
