@@ -274,7 +274,7 @@ openssl req -days 500 -newkey rsa:4096 \
 
 chown ldap:ldap "$PATH_PKI/ldapkey.pem"
 chmod 400 "$PATH_PKI/ldapkey.pem"
-cat "$PATH_PKI/ldapcert.pem" > "$PATH_PKI/cacerts.pem"
+sudo cp "$PATH_PKI/ldapcert.pem" "$PATH_PKI/cacerts.pem"
 
 cat << EOL >> add-tls.ldif
 dn: cn=config
@@ -291,5 +291,6 @@ EOL
 
 ldapadd -Y EXTERNAL -H ldapi:/// -f add-tls.ldif
 
+sudo systemctl restart slapd
 
 echo "=== SERVER LDAP CONFIGURADO ==="
