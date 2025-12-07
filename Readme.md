@@ -14,3 +14,5 @@
 ## Extres
 
 Si utilitzes la comanda 'sudo cat /var/log/user-data.log' en una de les instancies, podrás veure en quin punt de la creació está.
+
+Creat per: Jan Castells.
