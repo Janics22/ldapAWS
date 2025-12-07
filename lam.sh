@@ -177,37 +177,6 @@ systemctl restart httpd
 # ========================
 #  PÁGINA DE INICIO
 # ========================
-cat > /var/www/html/index.html << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>LDAP Account Manager</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 50px; }
-        .info { background: #f0f0f0; padding: 20px; border-radius: 5px; }
-        h1 { color: #333; }
-        code { background: #e0e0e0; padding: 2px 6px; border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <h1>LDAP Account Manager - Sistema Configurado</h1>
-    <div class="info">
-        <h2>Acceso a LAM</h2>
-        <p><strong>URL:</strong> <a href="/lam">/lam</a></p>
-        <p><strong>Usuario LDAP:</strong> <code>cn=admin,$BASE_DN</code></p>
-        <p><strong>Contraseña LDAP:</strong> <code>1234</code></p>
-        <hr>
-        <p><strong>Contraseña maestra LAM:</strong> <code>lam</code> (solo para configuración avanzada)</p>
-        <hr>
-        <h3>Usuarios disponibles:</h3>
-        <ul>
-            <li>alumne1, alumne2, alumne3, alumne4, alumne5, alumne6 (contraseña: 1234)</li>
-            <li>professor1, professor2 (contraseña: 1234)</li>
-        </ul>
-    </div>
-</body>
-</html>
-EOF
 
 
 # ========================
