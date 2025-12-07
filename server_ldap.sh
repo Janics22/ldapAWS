@@ -161,7 +161,7 @@ olcSuffix: $BASE
 olcRootDN: cn=admin,$BASE
 olcRootPW: $(slappasswd -s $ADMIN_PASSWORD)
 olcDbIndex: uid pres,eq
-olcDbIndex: cn pres,eq,approx,sub
+olcDbIndex: cn,sn pres,eq,approx,sub
 olcDbIndex: mail pres,eq,sub
 olcDbIndex: objectClass pres,eq
 olcDbIndex: loginShell pres,eq
@@ -222,6 +222,7 @@ EOL
 groups=("alumnes" "professors")
 gids=("5000" "5001")
 users=("alumne1" "alumne2" "alumne3" "alumen4" "alumne5" "alumne6" "professor1" "professor2")
+sns=("auno" "ados" "atres" "acuatro" "acinco" "aseis" "puno" "pdos")
 uids=("4000" "4001" "4002" "4003" "4004" "4005" "6001" "6002")
 alumnes=("alumne1" "alumne2" "alumne3" "alumen4" "alumne5" "alumne6")
 professors=("professor1" "professor2")
@@ -246,6 +247,7 @@ objectClass: posixAccount
 objectClass: shadowAccount
 objectClass: inetOrgPerson
 cn: ${users[$j]}
+sn: ${sns[$j]}
 uidNumber: ${uids[$j]}
 gidNumber: ${uids[$j]}
 homeDirectory: /home/${users[$j]}
