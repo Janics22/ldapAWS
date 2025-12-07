@@ -20,7 +20,6 @@ echo "... DC: $DC"
 
 # Preparing the hostname
 echo "... Setting the hostname to $HOSTNAME"
-hostnamectl set-hostname $HOSTNAME --static
 
 # Install Required Dependencies and Build Tools
 echo "... Install deps and tools"
@@ -162,7 +161,7 @@ olcSuffix: $BASE
 olcRootDN: cn=admin,$BASE
 olcRootPW: $(slappasswd -s $ADMIN_PASSWORD)
 olcDbIndex: uid pres,eq
-olcDbIndex: cn,sn pres,eq,approx,sub
+olcDbIndex: cn pres,eq,approx,sub
 olcDbIndex: mail pres,eq,sub
 olcDbIndex: objectClass pres,eq
 olcDbIndex: loginShell pres,eq
