@@ -74,7 +74,7 @@ chown root:ldap /etc/openldap/slapd.conf
 chmod 640 /etc/openldap/slapd.conf
 
 
-cat > /etc/systemd/system/slapd.service << 'EOL'
+cat > /etc/systemd/system/slapd.service << EOL
 [Unit]
 Description=OpenLDAP Server Daemon
 After=syslog.target network-online.target
@@ -94,7 +94,7 @@ EOL
 
 mv /etc/openldap/slapd.ldif /etc/openldap/slapd.ldif.default
 
-cat > /etc/openldap/slapd.ldif << 'EOL'
+cat > /etc/openldap/slapd.ldif << EOL
 dn: cn=config
 objectClass: olcGlobal
 cn: config
