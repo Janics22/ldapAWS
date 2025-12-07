@@ -86,7 +86,7 @@ Type=forking
 PIDFile=/var/lib/openldap/slapd.pid
 Environment="SLAPD_URLS=ldap:/// ldapi:/// ldaps:///"
 Environment="SLAPD_OPTIONS=-F /etc/openldap/slapd.d"
-ExecStart=/usr/libexec/slapd -u ldap -g ldap -h ${SLAPD_URLS} $SLAPD_OPTIONS
+ExecStart=/usr/libexec/slapd -u ldap -g ldap -h "ldap:/// ldapi:/// ldaps:///" -F /etc/openldap/slapd.d
 
 [Install]
 WantedBy=multi-user.target
